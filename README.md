@@ -4,3 +4,4 @@ Female high school athletes navigating college recruiting often have to piece to
 
 
 
+CUA Busch School AI Vibe Coding Contest, Fall 2026
