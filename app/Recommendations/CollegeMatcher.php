@@ -27,15 +27,15 @@ class CollegeMatcher
     public const MINIMUM_SCORE = 0.5;
 
     /**
-     * The top of each budget range, in dollars per year. Null means no upper limit.
+     * The bottom and top of each budget range, in dollars per year. A null top means no upper limit.
      *
-     * @var array<string, int|null>
+     * @var array<string, array{0: int, 1: int|null}>
      */
-    public const BUDGET_MAXIMUMS = [
-        'under_15k' => 15000,
-        '15k_30k' => 30000,
-        '30k_45k' => 45000,
-        '45k_plus' => null,
+    public const BUDGET_RANGES = [
+        'under_15k' => [0, 15000],
+        '15k_30k' => [15000, 30000],
+        '30k_45k' => [30000, 45000],
+        '45k_plus' => [45000, null],
     ];
 
     /**
@@ -68,14 +68,16 @@ class CollegeMatcher
         $inDivision = $this->filterByDivision($eligible, $answers['division']);
         $withMajor = $this->filterByMajor($inDivision, $answers['major']);
 
-        $knownCosts = $withMajor->pluck('cost_of_attendance_out_of_state')->filter(fn (?int $cost): bool => $cost !== null);
+        $knownCosts = $withMajor
+            ->map(fn (College $college): ?int => Affordability::applicableCost($college, $answers['home_state'])[0])
+            ->filter(fn (?int $cost): bool => $cost !== null);
         $costRange = $knownCosts->isEmpty() ? null : [$knownCosts->min(), $knownCosts->max()];
 
         $ranked = $withMajor
             ->map(fn (College $college): CollegeMatch => $this->evaluate($college, $answers, $costRange))
             ->filter(fn (CollegeMatch $match): bool => $match->score >= self::MINIMUM_SCORE)
-            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [$b->score, $a->costGap ?? PHP_INT_MAX, $a->college->name]
-                <=> [$a->score, $b->costGap ?? PHP_INT_MAX, $b->college->name])
+            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [$b->score, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
+                <=> [$a->score, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
             ->take(self::MAXIMUM_RESULTS)
             ->values();
 
@@ -147,28 +149,18 @@ class CollegeMatcher
             }
         }
 
-        $costGap = null;
-        if (array_key_exists($answers['budget'], self::BUDGET_MAXIMUMS)) {
+        $affordability = Affordability::for($college, $answers['home_state'], self::BUDGET_RANGES[$answers['budget']] ?? null);
+
+        if ($affordability->status === AffordabilityStatus::CostUnknown) {
+            $unknowns[] = 'Its '.($college->cost_academic_year ?? '2026-27').' cost of attendance is not verified yet.';
+        }
+
+        if (isset(self::BUDGET_RANGES[$answers['budget']])) {
             $possible += $weights['budget'];
-            $budgetMax = self::BUDGET_MAXIMUMS[$answers['budget']];
-            $cost = $college->cost_of_attendance_out_of_state;
+            $earned += $weights['budget'] * $this->affordabilityCredit($affordability, $costRange);
 
-            if ($cost === null) {
-                $earned += $weights['budget'] * 0.25;
-                $unknowns[] = 'Its '.($college->cost_academic_year ?? '2026-27').' cost of attendance is not verified yet.';
-                $tradeoffs[] = 'Its published cost is not verified yet, so affordability is unclear.';
-            } elseif ($budgetMax === null) {
-                $earned += $weights['budget'];
-            } else {
-                $costGap = $cost - $budgetMax;
-                $earned += $weights['budget'] * $this->affordability($cost, $costGap, $costRange);
-                $rate = $college->cost_of_attendance_in_state !== $cost ? ' (out-of-state rate)' : '';
-
-                if ($costGap <= 0) {
-                    $matchedOn[] = 'Published cost is within your family\'s budget range, even before aid';
-                } else {
-                    $tradeoffs[] = "Its published cost{$rate} is about \$".number_format($costGap).' a year above your family\'s budget, so grants or scholarships would need to cover the difference.';
-                }
+            if ($affordability->status === AffordabilityStatus::WithinBudget) {
+                $matchedOn[] = 'Published cost is within your family\'s budget range, even before aid';
             }
 
             $possible += $weights['merit'];
@@ -212,7 +204,7 @@ class CollegeMatcher
             matchedOn: $matchedOn,
             unknowns: $unknowns,
             tradeoff: $tradeoffs[0] ?? null,
-            costGap: $costGap,
+            affordability: $affordability,
         );
     }
 
@@ -235,26 +227,35 @@ class CollegeMatcher
     }
 
     /**
-     * Credit for affordability. A published cost within the budget earns full credit.
-     * Otherwise colleges are compared with each other: because the budget is after aid
-     * and the cost is before aid, most costs exceed the budget, so the cheapest
-     * candidate earns the most credit instead of every college being ruled out.
+     * Credit for affordability. A published cost within the budget earns full credit,
+     * and an unverified cost earns little. Otherwise colleges are compared with each
+     * other: because the budget is after aid and the cost is before aid, most costs
+     * exceed the budget, so the cheapest candidate earns the most credit instead of
+     * every college being ruled out.
      *
      * @param  array{0: int, 1: int}|null  $costRange
      */
-    private function affordability(int $cost, int $costGap, ?array $costRange): float
+    private function affordabilityCredit(Affordability $affordability, ?array $costRange): float
     {
-        if ($costGap <= 0) {
+        if ($affordability->status === AffordabilityStatus::WithinBudget) {
             return 1.0;
         }
 
-        [$lowest, $highest] = $costRange ?? [$cost, $cost];
+        if ($affordability->status === AffordabilityStatus::CostUnknown) {
+            return 0.25;
+        }
+
+        if ($affordability->status === AffordabilityStatus::MayExceedBudget) {
+            return 0.75;
+        }
+
+        [$lowest, $highest] = $costRange ?? [$affordability->cost, $affordability->cost];
 
         if ($highest === $lowest) {
             return 0.75;
         }
 
-        return round(1 - ($cost - $lowest) / ($highest - $lowest), 4);
+        return round(1 - ($affordability->cost - $lowest) / ($highest - $lowest), 4);
     }
 
     /**

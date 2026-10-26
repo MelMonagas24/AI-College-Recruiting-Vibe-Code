@@ -29,6 +29,7 @@ class ClaudeRecommendationExplainerTest extends TestCase
         'sat_score' => 1480,
         'major' => 'nursing',
         'budget' => '30k_45k',
+        'home_state' => 'GA',
         'setting' => 'no_preference',
         'size' => 'no_preference',
         'priority' => 'academics',

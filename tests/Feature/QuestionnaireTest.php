@@ -30,6 +30,7 @@ class QuestionnaireTest extends TestCase
             'act_score' => null,
             'major' => 'nursing',
             'budget' => '15k_30k',
+            'home_state' => 'NJ',
             'setting' => 'suburban',
             'size' => 'medium',
             'priority' => 'balance',

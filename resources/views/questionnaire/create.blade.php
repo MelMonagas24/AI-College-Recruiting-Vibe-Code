@@ -4,7 +4,7 @@
 
 @section('content')
     <h1>Let's get to know you</h1>
-    <p class="intro">Answer 12 quick questions about your soccer, school, and what you want from college. It takes about 3 minutes.</p>
+    <p class="intro">Answer 13 quick questions about your soccer, school, and what you want from college. It takes about 3 minutes.</p>
 
     <div class="demo-banner" role="note">
         <strong>Demo only:</strong> this questionnaire is for testing with <strong>fictional athlete profiles</strong>.
@@ -110,18 +110,32 @@
             <x-choice-group name="budget" :options="$options['budgets']" />
         </fieldset>
 
+        <div class="card">
+            <label class="question" for="home_state"><span class="step">10</span>What U.S. state do you live in?</label>
+            <p class="hint">Public colleges charge less to students from their own state. We use this only to show in-state or out-of-state prices. For this demo, pick the state of your fictional athlete.</p>
+            <select id="home_state" name="home_state" required>
+                <option value="">Select a state</option>
+                @foreach ($options['states'] as $code => $state)
+                    <option value="{{ $code }}" @selected(old('home_state') === $code)>{{ $state }}</option>
+                @endforeach
+            </select>
+            @error('home_state')
+                <p class="field-error">{{ $message }}</p>
+            @enderror
+        </div>
+
         <fieldset class="card">
-            <legend><span class="step">10</span>What type of college environment do you prefer?</legend>
+            <legend><span class="step">11</span>What type of college environment do you prefer?</legend>
             <x-choice-group name="setting" :options="$options['settings']" />
         </fieldset>
 
         <fieldset class="card">
-            <legend><span class="step">11</span>What size college do you prefer?</legend>
+            <legend><span class="step">12</span>What size college do you prefer?</legend>
             <x-choice-group name="size" :options="$options['sizes']" />
         </fieldset>
 
         <fieldset class="card">
-            <legend><span class="step">12</span>What matters most to you when choosing a college?</legend>
+            <legend><span class="step">13</span>What matters most to you when choosing a college?</legend>
             <x-choice-group name="priority" :options="$options['priorities']" />
         </fieldset>
 

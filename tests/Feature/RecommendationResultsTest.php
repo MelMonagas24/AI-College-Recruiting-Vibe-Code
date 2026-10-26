@@ -33,6 +33,7 @@ class RecommendationResultsTest extends TestCase
             'act_score' => 27,
             'major' => 'business',
             'budget' => '30k_45k',
+            'home_state' => 'NJ',
             'setting' => 'no_preference',
             'size' => 'no_preference',
             'priority' => 'affordability',
@@ -124,6 +125,7 @@ class RecommendationResultsTest extends TestCase
             'setting' => 'rural',
             'size' => 'small',
             'priority' => 'balance',
+            'home_state' => 'OH',
         ]))
             ->assertOk()
             ->assertSee("Why you're seeing fewer than 3 matches", false)
@@ -139,6 +141,75 @@ class RecommendationResultsTest extends TestCase
             ->assertSee('Demo only')
             ->assertSee('do not guarantee admission, scholarships, roster spots, or recruitment')
             ->assertSee('does not decide which NCAA division you can play in');
+    }
+
+    public function test_costs_above_budget_get_a_clear_warning_and_aid_reminder(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_3',
+            'major' => 'undecided',
+            'budget' => 'under_15k',
+            'home_state' => 'NJ',
+        ]))
+            ->assertOk()
+            ->assertSee('Affordability check')
+            ->assertSee("a published cost above your family's estimated budget (Under $15,000 per year)", false)
+            ->assertSee("Published cost is above your family's budget", false)
+            ->assertSee("Grants and scholarships could lower what you would actually pay, but we can't predict how much.", false)
+            ->assertSee('Net Price Calculator')
+            ->assertDontSee("Published cost is within your family's budget", false);
+    }
+
+    public function test_public_colleges_show_the_in_state_rate_to_residents(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $answers = ['division' => 'division_3', 'major' => 'undecided', 'budget' => '30k_45k', 'size' => 'medium', 'setting' => 'suburban'];
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([...$answers, 'home_state' => 'NJ']))
+            ->assertOk()
+            ->assertSee('The College of New Jersey')
+            ->assertSee('$44,640 per year (in-state rate)')
+            ->assertSee('In-state rate: you live in New Jersey');
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([...$answers, 'home_state' => 'NY']))
+            ->assertOk()
+            ->assertSee('$51,174 per year (out-of-state rate)')
+            ->assertSee('Out-of-state rate: this public college is in New Jersey, and you live in New York.');
+    }
+
+    public function test_unverified_costs_are_never_called_affordable(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_3',
+            'major' => 'undecided',
+            'setting' => 'urban',
+            'size' => 'medium',
+            'budget' => '45k_plus',
+            'priority' => 'balance',
+        ]))
+            ->assertOk()
+            ->assertSee('University of Chicago')
+            ->assertSee('Cost not verified')
+            ->assertSee("We won't guess.", false);
+    }
+
+    public function test_the_questionnaire_asks_for_a_home_state_and_requires_it(): void
+    {
+        $this->get(route('questionnaire.create'))
+            ->assertOk()
+            ->assertSee('What U.S. state do you live in?')
+            ->assertSee('pick the state of your fictional athlete')
+            ->assertSee('<option value="NJ" >New Jersey</option>', false);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete(['home_state' => '']))
+            ->assertSessionHasErrors('home_state');
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete(['home_state' => 'ZZ']))
+            ->assertSessionHasErrors('home_state');
     }
 
     public function test_submitting_answers_saves_nothing(): void

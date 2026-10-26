@@ -6,6 +6,8 @@
 
 @php
     $divisionNames = [1 => 'Division I', 2 => 'Division II', 3 => 'Division III'];
+    $budgetLabel = $options['budgets'][$answers['budget']];
+    $homeStateName = $options['states'][$answers['home_state']];
     $money = fn (?int $amount): ?string => $amount === null ? null : '$'.number_format($amount);
 @endphp
 
@@ -27,6 +29,21 @@
         <div class="notice" role="status">
             <strong>Personalized explanations are unavailable.</strong>
             {{ $explanations->message }}
+        </div>
+    @endif
+
+    @if ($results->matches->isNotEmpty() && $answers['budget'] !== 'unsure' && ($results->aboveBudgetCount() > 0 || $results->unknownCostCount() > 0))
+        <div class="notice warn" role="status">
+            <strong>Affordability check</strong>
+            <ul>
+                @if ($results->aboveBudgetCount() > 0)
+                    <li>{{ $results->aboveBudgetCount() }} of {{ $results->matches->count() }} {{ $results->matches->count() === 1 ? 'college has' : 'colleges have' }} a published cost above your family's estimated budget ({{ $budgetLabel }} per year).</li>
+                @endif
+                @if ($results->unknownCostCount() > 0)
+                    <li>{{ $results->unknownCostCount() }} {{ $results->unknownCostCount() === 1 ? 'college has' : 'colleges have' }} a cost we could not verify, so we can't tell whether {{ $results->unknownCostCount() === 1 ? 'it fits' : 'they fit' }} your budget.</li>
+                @endif
+                <li>Published costs are before financial aid. Grants and scholarships could lower what your family actually pays, but we can't predict how much.</li>
+            </ul>
         </div>
     @endif
 
@@ -70,6 +87,8 @@
                     <p><span class="badge off">Personalized explanation unavailable</span></p>
                 @endif
             </section>
+
+            @include('questionnaire.partials.affordability', ['affordability' => $match->affordability])
 
             @if ($match->matchedOn !== [])
                 <section>
@@ -159,6 +178,7 @@
             <li>Only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.</li>
             <li>Colleges are filtered by your division choice and your planned major, then ranked by budget, campus environment, size, and what matters most to you. Affordability counts the most.</li>
             <li>Published costs are prices before grants and scholarships. Your family's actual cost will likely be different. Use each college's Net Price Calculator for a personal estimate.</li>
+            <li>Public colleges show their in-state price only if you live in the same state ({{ $homeStateName }}); otherwise they show the out-of-state price. Each college decides who qualifies as an in-state resident.</li>
             <li>Your GPA, test scores, position, and club league were not used to rank colleges, because our database has no admissions or roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
             <li>These results do not guarantee admission, scholarships, roster spots, or recruitment. Talk with college coaches and admissions offices.</li>
         </ul>
@@ -210,6 +230,10 @@
             <div>
                 <dt>Estimated annual family budget (after grants and scholarships)</dt>
                 <dd>{{ $options['budgets'][$answers['budget']] }}</dd>
+            </div>
+            <div>
+                <dt>Home state</dt>
+                <dd>{{ $homeStateName }}</dd>
             </div>
             <div>
                 <dt>Preferred environment</dt>

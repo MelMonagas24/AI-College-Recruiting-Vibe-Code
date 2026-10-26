@@ -32,6 +32,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         - Use only the facts provided for that college. If a fact is listed as unknown, say it is unknown rather than guessing.
         - Name only the college you are explaining. Never mention or suggest any other college.
         - Published cost is the price before financial aid. Never say or imply it is what the family will pay.
+        - Never call a college affordable unless its cost is "within budget". If it is above budget or unknown, say so plainly.
         - Do not mention any dollar amount that is not in the provided facts.
         - Do not predict or promise admission, scholarships, roster spots, playing time, or recruitment. A club league does not determine which NCAA division a player can compete in.
         - Write directly to the athlete ("you"), in plain language a high school student understands.
@@ -128,7 +129,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             'undergraduates' => $match->college->undergraduate_enrollment
                 ? number_format($match->college->undergraduate_enrollment)." ({$match->college->enrollment_term})"
                 : 'unknown',
-            'published_cost_of_attendance_before_aid' => $this->costFacts($match->college),
+            'published_cost_of_attendance_before_aid' => $this->costFacts($match),
             'merit_scholarships' => $match->college->merit_aid->label(),
             'matched_preferences' => $match->matchedOn,
             'unknown_facts' => $match->unknowns,
@@ -211,14 +212,18 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
     /**
      * @return array<string, string>
      */
-    private function costFacts(College $college): array
+    private function costFacts(CollegeMatch $match): array
     {
+        $college = $match->college;
+        $affordability = $match->affordability;
         $format = fn (?int $amount): string => $amount === null ? 'unknown' : '$'.number_format($amount);
 
         return [
             'academic_year' => $college->cost_academic_year ?? 'unknown',
-            'in_state' => $format($college->cost_of_attendance_in_state),
-            'out_of_state' => $format($college->cost_of_attendance_out_of_state),
+            'applies_to_this_athlete' => $format($affordability->cost),
+            'rate_used' => $affordability->rate ?? 'same price for all students',
+            'compared_with_family_budget' => str_replace('_', ' ', $affordability->status->value),
+            'amount_above_budget' => $format($affordability->gap),
             'includes_books_travel_personal' => match ($college->cost_of_attendance_is_complete) {
                 true => 'yes',
                 false => 'no',
@@ -257,8 +262,8 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             $match->college->cost_of_attendance_out_of_state,
             $match->college->tuition_fees_in_state,
             $match->college->tuition_fees_out_of_state,
-            $match->costGap,
-            ...array_filter(CollegeMatcher::BUDGET_MAXIMUMS),
+            $match->affordability->gap,
+            ...array_filter(array_merge(...array_values(CollegeMatcher::BUDGET_RANGES))),
         ]);
 
         preg_match_all('/\$\s?([\d,]+)/', $text, $found);

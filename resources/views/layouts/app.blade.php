@@ -142,6 +142,14 @@
         .facts { margin-top: 16px; padding-top: 4px; border-top: 1px solid #e5e7eb; }
         .facts dd { font-weight: 600; }
         .sources { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 0.9rem; color: #4b5563; }
+        .notice.warn { background: #fff4ed; border-color: #f5b48a; color: #6b2d0b; }
+        .afford { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #e5e7eb; background: #f9fafb; display: grid; gap: 6px; }
+        .afford h3 { margin: 0; }
+        .afford.over { background: #fff4ed; border-color: #f5b48a; }
+        .afford.over h3 { color: #9a3412; }
+        .afford.fits { background: #f0fdf4; border-color: #86efac; }
+        .afford.fits h3 { color: #166534; }
+        .afford.neutral h3 { color: #374151; }
         .answers summary { cursor: pointer; font-weight: 650; color: #3b2a8f; }
         .answers dl { margin-top: 8px; }
         @media (max-width: 480px) {

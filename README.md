@@ -24,14 +24,16 @@ After an athlete submits the questionnaire, the results page shows 3–5 college
 1. **Eligibility:** only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.
 2. **Filters:** the athlete's division choice, and her major (colleges known not to offer it are removed; colleges where it is unknown stay and are flagged).
 3. **Ranking:** budget, campus environment, size, and what matters most. Affordability counts the most. Published costs are prices before aid, so they are compared to the family's after-aid budget only to show how much grants or scholarships would need to cover.
-4. **Not used:** GPA, test scores, position, and club league, because the database has no admissions or roster data, and a club league cannot decide a player's NCAA division.
-5. **Fewer than 3 matches:** the page shows only the colleges that fit and explains why, instead of adding poor matches.
+4. **In-state vs. out-of-state:** the athlete's home state (question 10) decides which published price applies. A public college shows its in-state price only when she lives in the same state; otherwise, including athletes outside the U.S., it shows the out-of-state price. Private colleges charge everyone the same published price. Each college sets its own residency rules.
+5. **Affordability warnings:** each result says whether the published cost is within, above, or possibly above the family's budget range, by how much, and that financial aid could change the actual cost. Unverified costs are labeled "Cost not verified" and are never called affordable. Scholarships are never estimated.
+6. **Not used:** GPA, test scores, position, and club league, because the database has no admissions or roster data, and a club league cannot decide a player's NCAA division.
+7. **Fewer than 3 matches:** the page shows only the colleges that fit and explains why, instead of adding poor matches.
 
 The matching logic is in `app/Recommendations/CollegeMatcher.php`.
 
 ### AI explanations (optional)
 
-Claude can write a short personalized explanation for each recommended college. Claude never chooses colleges: it only receives the matched colleges' verified facts and the athlete's preferences (no name, GPA, or test scores). Its answer is rejected if it mentions a college that was not recommended or a dollar amount that is not in the verified data.
+Claude can write a short personalized explanation for each recommended college. Claude never chooses colleges: it only receives the matched colleges' verified facts and the athlete's preferences (no name, GPA, test scores, or home state; only whether the in-state or out-of-state price applies). Its answer is rejected if it mentions a college that was not recommended or a dollar amount that is not in the verified data.
 
 Without an API key, the app works normally and labels explanations as unavailable. To turn them on:
 
@@ -70,7 +72,7 @@ Then open http://localhost:8000, click **Get Started**, and fill in the question
 - **More colleges and sports:** grow beyond the first 25 programs and add other women's sports.
 - **Athletic context:** add conference strength, roster size, and coaching contacts from official athletics sites, without promising recruitment or scholarships.
 - **Saved profiles:** optional accounts so athletes can save answers, once privacy protections are in place.
-- **In-state pricing:** ask for the athlete's home state (optional) so public colleges can be compared at in-state rates instead of out-of-state rates.
+- **Tuition exchange programs:** verify regional discounts such as the Western Undergraduate Exchange (WUE) and show them only for eligible states.
 - **Admissions and roster context:** add verified admissions ranges and roster data so GPA, test scores, and position can be used responsibly.
 - **Faster results:** generate AI explanations in the background so the results page loads immediately.
 - **Deployment:** run database migrations and the college seeder as part of the AWS deployment, and store the API key in AWS environment settings, never in the code.

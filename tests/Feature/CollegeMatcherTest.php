@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\College;
+use App\Recommendations\Affordability;
+use App\Recommendations\AffordabilityStatus;
 use App\Recommendations\CollegeMatch;
 use App\Recommendations\CollegeMatcher;
 use Database\Seeders\CollegeSeeder;
@@ -30,6 +32,7 @@ class CollegeMatcherTest extends TestCase
             'test_taken' => 'none',
             'major' => 'undecided',
             'budget' => 'unsure',
+            'home_state' => 'OH',
             'setting' => 'no_preference',
             'size' => 'no_preference',
             'priority' => 'balance',
@@ -111,7 +114,9 @@ class CollegeMatcherTest extends TestCase
         $match = $this->matcher()->match($this->fictionalAthlete(['budget' => '15k_30k', 'setting' => 'suburban']))->matches->first();
 
         $this->assertTrue($match->college->is($college));
-        $this->assertNull($match->costGap);
+        $this->assertSame(AffordabilityStatus::CostUnknown, $match->affordability->status);
+        $this->assertNull($match->affordability->cost);
+        $this->assertNull($match->affordability->gap);
         $this->assertStringContainsString('cost of attendance is not verified yet', implode(' ', $match->unknowns));
         $this->assertStringNotContainsString('$', implode(' ', [...$match->unknowns, ...$match->matchedOn]));
     }
@@ -125,10 +130,10 @@ class CollegeMatcherTest extends TestCase
             'priority' => 'affordability',
         ]));
 
-        $gaps = $results->matches->pluck('costGap')->filter(fn (?int $gap): bool => $gap !== null);
-        $this->assertNotEmpty($gaps);
-        $this->assertSame($gaps->min(), $results->matches->first()->costGap);
-        $this->assertStringContainsString('grants or scholarships would need to cover', $results->matches->first()->tradeoff);
+        $costs = $results->matches->map(fn (CollegeMatch $match): ?int => $match->affordability->cost)->filter();
+        $this->assertNotEmpty($costs);
+        $this->assertSame($costs->min(), $results->matches->first()->affordability->cost);
+        $this->assertTrue($results->matches->first()->affordability->isAboveBudget());
     }
 
     public function test_a_published_cost_above_budget_is_never_described_as_affordable(): void
@@ -137,12 +142,79 @@ class CollegeMatcherTest extends TestCase
 
         $results = $this->matcher()->match($this->fictionalAthlete(['budget' => 'under_15k']));
 
-        $results->matches
-            ->filter(fn (CollegeMatch $match): bool => $match->costGap > 0)
-            ->each(fn (CollegeMatch $match) => $this->assertNotContains(
-                'Published cost is within your family\'s budget range, even before aid',
-                $match->matchedOn,
-            ));
+        $this->assertSame($results->matches->count(), $results->aboveBudgetCount() + $results->unknownCostCount());
+        $results->matches->each(fn (CollegeMatch $match) => $this->assertNotContains(
+            'Published cost is within your family\'s budget range, even before aid',
+            $match->matchedOn,
+        ));
+    }
+
+    public function test_public_colleges_use_the_in_state_rate_for_residents(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $rutgers = College::where('short_name', 'Rutgers')->sole();
+
+        $resident = Affordability::for($rutgers, 'NJ', CollegeMatcher::BUDGET_RANGES['30k_45k']);
+        $nonResident = Affordability::for($rutgers, 'PA', CollegeMatcher::BUDGET_RANGES['30k_45k']);
+
+        $this->assertSame(41332, $resident->cost);
+        $this->assertSame('in-state', $resident->rate);
+        $this->assertSame(62782, $nonResident->cost);
+        $this->assertSame('out-of-state', $nonResident->rate);
+        $this->assertSame(62782 - 45000, $nonResident->gap);
+    }
+
+    public function test_athletes_outside_the_us_see_out_of_state_rates(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $usf = College::where('short_name', 'USF')->sole();
+
+        $affordability = Affordability::for($usf, 'outside_us', CollegeMatcher::BUDGET_RANGES['15k_30k']);
+
+        $this->assertSame(40134, $affordability->cost);
+        $this->assertSame('out-of-state', $affordability->rate);
+    }
+
+    public function test_private_colleges_charge_everyone_the_same_published_price(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $georgetown = College::where('short_name', 'Georgetown')->sole();
+
+        $local = Affordability::for($georgetown, 'DC', null);
+        $visitor = Affordability::for($georgetown, 'CA', null);
+
+        $this->assertSame(100864, $local->cost);
+        $this->assertSame($local->cost, $visitor->cost);
+        $this->assertNull($local->rate);
+        $this->assertSame(AffordabilityStatus::NoBudget, $local->status);
+    }
+
+    public function test_residency_changes_which_public_colleges_rank_highest(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $answers = ['division' => 'division_1', 'budget' => '15k_30k', 'priority' => 'affordability'];
+
+        $northCarolinian = $this->matcher()->match($this->fictionalAthlete([...$answers, 'home_state' => 'NC']));
+        $floridian = $this->matcher()->match($this->fictionalAthlete([...$answers, 'home_state' => 'FL']));
+
+        $this->assertSame('UNC', $northCarolinian->matches->first()->college->short_name);
+        $this->assertSame('in-state', $northCarolinian->matches->first()->affordability->rate);
+        $this->assertSame('USF', $floridian->matches->first()->college->short_name);
+        $this->assertSame(27248, $floridian->matches->first()->affordability->cost);
+    }
+
+    public function test_affordability_statuses_compare_published_cost_with_the_budget_range(): void
+    {
+        $college = College::factory()->make(['cost_of_attendance_in_state' => 40000, 'cost_of_attendance_out_of_state' => 40000]);
+
+        $this->assertSame(AffordabilityStatus::WithinBudget, Affordability::for($college, 'OH', CollegeMatcher::BUDGET_RANGES['30k_45k'])->status);
+        $this->assertSame(AffordabilityStatus::AboveBudget, Affordability::for($college, 'OH', CollegeMatcher::BUDGET_RANGES['15k_30k'])->status);
+        $this->assertSame(10000, Affordability::for($college, 'OH', CollegeMatcher::BUDGET_RANGES['15k_30k'])->gap);
+        $this->assertSame(AffordabilityStatus::WithinBudget, Affordability::for($college, 'OH', CollegeMatcher::BUDGET_RANGES['45k_plus'])->status);
+
+        $expensive = College::factory()->make(['cost_of_attendance_in_state' => 80000, 'cost_of_attendance_out_of_state' => 80000]);
+        $this->assertSame(AffordabilityStatus::MayExceedBudget, Affordability::for($expensive, 'OH', CollegeMatcher::BUDGET_RANGES['45k_plus'])->status);
+        $this->assertNull(Affordability::for($expensive, 'OH', CollegeMatcher::BUDGET_RANGES['45k_plus'])->gap);
     }
 
     public function test_it_shows_fewer_results_and_explains_why_instead_of_poor_matches(): void

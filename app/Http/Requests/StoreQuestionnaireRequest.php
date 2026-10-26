@@ -36,6 +36,7 @@ class StoreQuestionnaireRequest extends FormRequest
             'act_score' => ['exclude_unless:test_taken,act,both', 'nullable', 'integer', 'between:1,36'],
             'major' => ['required', Rule::in(array_keys(config('questionnaire.majors')))],
             'budget' => ['required', Rule::in(array_keys(config('questionnaire.budgets')))],
+            'home_state' => ['required', Rule::in(array_keys(config('questionnaire.states')))],
             'setting' => ['required', Rule::in(array_keys(config('questionnaire.settings')))],
             'size' => ['required', Rule::in(array_keys(config('questionnaire.sizes')))],
             'priority' => ['required', Rule::in(array_keys(config('questionnaire.priorities')))],
@@ -54,6 +55,7 @@ class StoreQuestionnaireRequest extends FormRequest
             'gpa.decimal' => 'Please use no more than two decimal places for GPA (for example, 3.75).',
             'sat_score.between' => 'SAT scores range from 400 to 1600.',
             'act_score.between' => 'ACT scores range from 1 to 36.',
+            'home_state.required' => 'Please choose a state (any state is fine for a fictional athlete).',
         ];
     }
 
