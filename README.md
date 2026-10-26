@@ -61,6 +61,20 @@ php artisan serve
 
 Then open http://localhost:8000, click **Get Started**, and fill in the questionnaire with a fictional athlete.
 
+## Deploying to AWS Elastic Beanstalk
+
+The app runs on Elastic Beanstalk (PHP 8.4 or newer on Amazon Linux 2023) behind CloudFront.
+
+- **Database:** the predeploy hook `.platform/hooks/predeploy/01_build_college_database.sh` rebuilds a SQLite database from `database/data/colleges.json` on every deployment and whenever AWS launches a replacement server. The app only reads college data and never saves athlete answers, so nothing is lost when it is rebuilt. If fewer than 25 colleges load, the deployment stops and the previous version keeps running.
+- **Build the upload ZIP from Git** so it never contains `.env`, the local database, or `vendor/`:
+
+  ```sh
+  git archive -o deploy.zip HEAD
+  ```
+
+- **Environment properties** (set in the Elastic Beanstalk console, never in files): `APP_KEY`, `APP_URL` (the public HTTPS CloudFront address), and later `ANTHROPIC_API_KEY`.
+- **CloudFront** must allow POST requests, forward cookies, not cache pages, and redirect HTTP to HTTPS.
+
 ## Roadmap
 
 - **Connect AI explanations:** add an API key, then review sample explanations with fictional profiles before the demo.
