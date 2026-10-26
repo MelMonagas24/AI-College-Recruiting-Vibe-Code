@@ -20,23 +20,26 @@
         main { max-width: 640px; }
         h1 { font-size: clamp(2rem, 6vw, 3rem); color: #3b2a8f; margin-bottom: 16px; }
         p.description { font-size: 1.15rem; line-height: 1.6; margin-bottom: 32px; }
-        p.coming-soon {
+        a.get-started {
             display: inline-block;
-            padding: 10px 24px;
+            padding: 14px 32px;
             border-radius: 999px;
             background: #3b2a8f;
             color: #fff;
             font-weight: 600;
             letter-spacing: 0.08em;
             text-transform: uppercase;
+            text-decoration: none;
         }
+        a.get-started:hover { background: #2e2170; }
+        a.get-started:focus-visible { outline: 3px solid #a78bfa; outline-offset: 3px; }
     </style>
 </head>
 <body>
     <main>
         <h1>AI College Recruiting</h1>
         <p class="description">Helping female high school athletes find colleges that fit their athletic, academic, financial, and personal goals.</p>
-        <p class="coming-soon">Coming Soon</p>
+        <a class="get-started" href="{{ route('questionnaire.create') }}">Get Started</a>
     </main>
 </body>
 </html>
