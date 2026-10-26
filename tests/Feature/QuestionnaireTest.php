@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\CompetitiveTier;
 use App\Enums\SoccerLeague;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class QuestionnaireTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * A complete set of answers for a fictional athlete.
      *

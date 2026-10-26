@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\SoccerLeague;
 use App\Http\Requests\StoreQuestionnaireRequest;
+use App\Recommendations\CollegeMatcher;
+use App\Recommendations\RecommendationExplainer;
 use Illuminate\View\View;
 
 class QuestionnaireController extends Controller
@@ -21,18 +23,21 @@ class QuestionnaireController extends Controller
     }
 
     /**
-     * Show a summary of the submitted answers.
+     * Show recommended colleges and a summary of the submitted answers.
      *
-     * Answers are only displayed back to the athlete; nothing is saved.
+     * Answers are only used for this response; nothing is saved.
      */
-    public function store(StoreQuestionnaireRequest $request): View
+    public function store(StoreQuestionnaireRequest $request, CollegeMatcher $matcher, RecommendationExplainer $explainer): View
     {
         $answers = $request->validated();
+        $results = $matcher->match($answers);
 
-        return view('questionnaire.summary', [
+        return view('questionnaire.results', [
             'answers' => $answers,
             'options' => config('questionnaire'),
             'league' => SoccerLeague::from($answers['league']),
+            'results' => $results,
+            'explanations' => $explainer->explain($answers, $results),
         ]);
     }
 }

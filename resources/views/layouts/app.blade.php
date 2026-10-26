@@ -120,6 +120,30 @@
         dt { font-size: 0.9rem; color: #4b5563; }
         dd { font-weight: 600; }
         dd small { display: block; font-weight: 400; color: #4b5563; }
+        .notice {
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            border-radius: 12px;
+            background: #fff8e6;
+            border: 1px solid #f3d27a;
+            color: #5b4100;
+        }
+        .notice ul, .card ul { margin: 8px 0 0 20px; display: grid; gap: 4px; }
+        .match header { margin-bottom: 14px; }
+        .match h2 { font-size: 1.3rem; color: #3b2a8f; line-height: 1.25; margin-bottom: 6px; }
+        .match h3, .card h3 { font-size: 0.95rem; margin: 14px 0 4px; color: #1f2937; }
+        .meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; color: #4b5563; }
+        .pill { padding: 2px 10px; border-radius: 999px; background: #efecfb; color: #3b2a8f; font-weight: 700; font-size: 0.85rem; }
+        .badge { display: inline-block; padding: 2px 8px; margin-right: 4px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; vertical-align: 1px; }
+        .badge.ai { background: #3b2a8f; color: #fff; }
+        .badge.off { background: #f3f4f6; color: #4b5563; border: 1px dashed #9ca3af; }
+        .fine { font-size: 0.85rem; font-weight: 400; color: #4b5563; }
+        .checks li::marker { content: "✓  "; color: #15803d; }
+        .facts { margin-top: 16px; padding-top: 4px; border-top: 1px solid #e5e7eb; }
+        .facts dd { font-weight: 600; }
+        .sources { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 0.9rem; color: #4b5563; }
+        .answers summary { cursor: pointer; font-weight: 650; color: #3b2a8f; }
+        .answers dl { margin-top: 8px; }
         @media (max-width: 480px) {
             .choice { flex: 1 1 100%; }
             .choice span { display: block; text-align: center; }
