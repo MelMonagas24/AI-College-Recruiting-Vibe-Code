@@ -6,4 +6,28 @@ Female high school athletes navigating college recruiting often have to piece to
 
 
 
+## College Database
+
+The app's college data lives in `database/data/colleges.json`: 25 women's college soccer programs researched from official sources on October 26, 2026. Each college records its verification status (verified, partially verified, or unverified), and each important fact keeps its official source link and academic year. Unknown values are left blank and never estimated. Costs are published prices before financial aid, not what a family will pay.
+
+To add or update a college, edit the JSON file, then run:
+
+```sh
+php artisan migrate
+php artisan db:seed --class=CollegeSeeder
+```
+
+## Roadmap
+
+- **AI recommendations (next):** recommend only eligible colleges (verified active women's soccer program and confirmed NCAA division), and explain why each one fits the athlete's answers.
+- **Finish partially verified records:** confirm 2026-27 costs for Penn State, Rollins, Western Washington, Susquehanna, Catholic University, and UChicago.
+- **Net price guidance:** link each school's official Net Price Calculator so families can estimate cost after aid, instead of comparing their budget to published prices.
+- **Yearly data refresh:** update costs each spring when schools publish the next academic year, and update enrollment when new federal data is released.
+- **More precise matching:** use the detailed federal locale (for example, "City: Small" vs. "City: Large") and add more majors beyond the first five.
+- **Admin review page:** let a reviewer edit college records and mark facts as verified without editing the JSON file.
+- **More colleges and sports:** grow beyond the first 25 programs and add other women's sports.
+- **Athletic context:** add conference strength, roster size, and coaching contacts from official athletics sites, without promising recruitment or scholarships.
+- **Saved profiles:** optional accounts so athletes can save answers, once privacy protections are in place.
+- **Deployment:** run database migrations and the college seeder as part of the AWS deployment.
+
 CUA Busch School AI Vibe Coding Contest, Fall 2026
