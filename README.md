@@ -66,6 +66,7 @@ Then open http://localhost:8000, click **Get Started**, and fill in the question
 The app runs on Elastic Beanstalk (PHP 8.4 or newer on Amazon Linux 2023) behind CloudFront.
 
 - **Database:** the predeploy hook `.platform/hooks/predeploy/01_build_college_database.sh` rebuilds a SQLite database from `database/data/colleges.json` on every deployment and whenever AWS launches a replacement server. The app only reads college data and never saves athlete answers, so nothing is lost when it is rebuilt. If fewer than 25 colleges load, the deployment stops and the previous version keeps running.
+- **Configuration updates:** changing an environment property (for example, adding `ANTHROPIC_API_KEY`) makes Elastic Beanstalk set the app up again without running `.platform/hooks`. The configuration hook `.platform/confighooks/predeploy/01_build_college_database.sh` runs the same database script then, so the college list is never lost. Without it, the questionnaire page still loads but submitting it shows a 500 error.
 - **Build the upload ZIP from Git** so it never contains `.env`, the local database, or `vendor/`:
 
   ```sh

@@ -9,6 +9,8 @@ class DeploymentReadinessTest extends TestCase
 {
     private const HOOK = '.platform/hooks/predeploy/01_build_college_database.sh';
 
+    private const CONFIG_HOOK = '.platform/confighooks/predeploy/01_build_college_database.sh';
+
     private function bootAs(string $environment, string $appUrl): void
     {
         $this->app['env'] = $environment;
@@ -50,15 +52,27 @@ class DeploymentReadinessTest extends TestCase
         $this->assertStringContainsString('chown -R webapp:webapp database storage bootstrap/cache', $script);
     }
 
-    public function test_the_deploy_hook_is_executable_in_git(): void
+    public function test_configuration_updates_also_rebuild_the_college_database(): void
     {
-        $mode = trim((string) shell_exec('git -C '.escapeshellarg(base_path()).' ls-files -s '.escapeshellarg(self::HOOK)));
+        $script = file_get_contents(base_path(self::CONFIG_HOOK));
 
-        if ($mode === '') {
-            $this->markTestSkipped('Git is not available or the hook is not tracked yet.');
+        $this->assertStringStartsWith("#!/bin/bash\n", $script);
+        $this->assertStringNotContainsString("\r", $script, 'The hook must use Linux line endings.');
+        $this->assertStringContainsString('set -euo pipefail', $script);
+        $this->assertStringContainsString('exec bash '.self::HOOK, $script);
+    }
+
+    public function test_the_deploy_hooks_are_executable_in_git(): void
+    {
+        foreach ([self::HOOK, self::CONFIG_HOOK] as $hook) {
+            $mode = trim((string) shell_exec('git -C '.escapeshellarg(base_path()).' ls-files -s '.escapeshellarg($hook)));
+
+            if ($mode === '') {
+                $this->markTestSkipped("Git is not available or {$hook} is not tracked yet.");
+            }
+
+            $this->assertStringStartsWith('100755', $mode, "{$hook} must be executable.");
         }
-
-        $this->assertStringStartsWith('100755', $mode);
     }
 
     public function test_elastic_beanstalk_settings_are_production_safe_and_contain_no_secrets(): void
