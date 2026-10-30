@@ -18,7 +18,7 @@ class CollegeSource extends Model
     /**
      * The topics a source can back up.
      */
-    public const TOPICS = ['athletics', 'federal_data', 'programs', 'costs', 'merit_aid'];
+    public const TOPICS = ['athletics', 'federal_data', 'programs', 'costs', 'merit_aid', 'admissions'];
 
     /**
      * @var list<string>

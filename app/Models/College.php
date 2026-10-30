@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CampusEnvironment;
 use App\Enums\CollegeSize;
 use App\Enums\MeritAidAvailability;
+use App\Enums\TestPolicy;
 use App\Enums\VerificationStatus;
 use Database\Factories\CollegeFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -24,6 +25,13 @@ class College extends Model
 {
     /** @use HasFactory<CollegeFactory> */
     use HasFactory;
+
+    /**
+     * Where a college's admissions facts come from.
+     */
+    public const COMMON_DATA_SET = 'common_data_set';
+
+    public const COLLEGE_SCORECARD = 'college_scorecard';
 
     /**
      * @var list<string>
@@ -56,6 +64,25 @@ class College extends Model
         'cost_note',
         'merit_aid',
         'merit_aid_note',
+        'admissions_data_source',
+        'admissions_term',
+        'admission_rate',
+        'test_policy',
+        'test_policy_term',
+        'test_policy_note',
+        'sat_composite_25th',
+        'sat_composite_75th',
+        'sat_submitted_percent',
+        'sat_reading_writing_25th',
+        'sat_reading_writing_75th',
+        'sat_math_25th',
+        'sat_math_75th',
+        'act_composite_25th',
+        'act_composite_75th',
+        'act_submitted_percent',
+        'average_high_school_gpa',
+        'gpa_submitted_percent',
+        'gpa_note',
         'verification_status',
         'last_verified_on',
         'research_notes',
@@ -84,6 +111,20 @@ class College extends Model
             'cost_of_attendance_out_of_state' => 'integer',
             'cost_of_attendance_is_complete' => 'boolean',
             'merit_aid' => MeritAidAvailability::class,
+            'admission_rate' => 'float',
+            'test_policy' => TestPolicy::class,
+            'sat_composite_25th' => 'integer',
+            'sat_composite_75th' => 'integer',
+            'sat_submitted_percent' => 'float',
+            'sat_reading_writing_25th' => 'integer',
+            'sat_reading_writing_75th' => 'integer',
+            'sat_math_25th' => 'integer',
+            'sat_math_75th' => 'integer',
+            'act_composite_25th' => 'integer',
+            'act_composite_75th' => 'integer',
+            'act_submitted_percent' => 'float',
+            'average_high_school_gpa' => 'float',
+            'gpa_submitted_percent' => 'float',
             'verification_status' => VerificationStatus::class,
             'last_verified_on' => 'date',
         ];
@@ -114,6 +155,15 @@ class College extends Model
         return $this->has_active_womens_soccer
             && $this->womens_soccer_verified_season !== null
             && in_array($this->ncaa_division, [1, 2, 3], true);
+    }
+
+    /**
+     * Whether admissions facts come from the college's own Common Data Set,
+     * the only source detailed enough to compare an athlete's test scores with.
+     */
+    public function hasCommonDataSetAdmissions(): bool
+    {
+        return $this->admissions_data_source === self::COMMON_DATA_SET;
     }
 
     /**

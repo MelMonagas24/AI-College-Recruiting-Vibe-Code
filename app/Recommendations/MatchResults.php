@@ -10,12 +10,14 @@ use Illuminate\Support\Collection;
 final readonly class MatchResults
 {
     /**
-     * @param  Collection<int, CollegeMatch>  $matches
+     * @param  Collection<int, CollegeMatch>  $matches  The top matches, at most CollegeMatcher::MAXIMUM_RESULTS.
      * @param  list<string>  $shortfallReasons  Why fewer than the minimum number of colleges matched.
+     * @param  Collection<int, CollegeMatch>  $alsoFits  Every other college that meets the athlete's preferences, so none is hidden by the top-match limit.
      */
     public function __construct(
         public Collection $matches,
         public array $shortfallReasons,
+        public Collection $alsoFits = new Collection,
     ) {}
 
     public function hasShortfall(): bool

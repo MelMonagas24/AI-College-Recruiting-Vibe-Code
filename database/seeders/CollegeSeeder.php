@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\MeritAidAvailability;
+use App\Enums\TestPolicy;
 use App\Enums\VerificationStatus;
 use App\Models\College;
 use App\Models\CollegeSource;
@@ -91,6 +92,23 @@ class CollegeSeeder extends Seeder
             'cost_of_attendance_out_of_state' => $money,
             'cost_of_attendance_is_complete' => ['nullable', 'boolean'],
             'merit_aid' => ['required', Rule::enum(MeritAidAvailability::class)],
+            'admissions_data_source' => ['present', 'nullable', Rule::in([College::COMMON_DATA_SET, College::COLLEGE_SCORECARD])],
+            'admissions_term' => ['nullable', 'string', 'regex:/^Fall \d{4}$/', 'required_with:admissions_data_source'],
+            'admission_rate' => ['nullable', 'numeric', 'between:0,100', 'required_with:admissions_data_source'],
+            'test_policy' => ['nullable', Rule::enum(TestPolicy::class), 'required_with:admissions_data_source'],
+            'test_policy_term' => ['nullable', 'string', 'required_with:test_policy'],
+            'sat_composite_25th' => ['nullable', 'integer', 'between:400,1600', 'required_with:sat_composite_75th'],
+            'sat_composite_75th' => ['nullable', 'integer', 'between:400,1600', 'gte:sat_composite_25th'],
+            'sat_reading_writing_25th' => ['nullable', 'integer', 'between:200,800'],
+            'sat_reading_writing_75th' => ['nullable', 'integer', 'between:200,800'],
+            'sat_math_25th' => ['nullable', 'integer', 'between:200,800'],
+            'sat_math_75th' => ['nullable', 'integer', 'between:200,800'],
+            'act_composite_25th' => ['nullable', 'integer', 'between:1,36', 'required_with:act_composite_75th'],
+            'act_composite_75th' => ['nullable', 'integer', 'between:1,36', 'gte:act_composite_25th'],
+            'sat_submitted_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'act_submitted_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'average_high_school_gpa' => ['nullable', 'numeric', 'between:0,5'],
+            'gpa_submitted_percent' => ['nullable', 'numeric', 'between:0,100', 'required_with:average_high_school_gpa'],
             'verification_status' => ['required', Rule::enum(VerificationStatus::class)],
             'sources' => ['required', 'array', 'min:1'],
             'sources.*.topic' => ['required', Rule::in(CollegeSource::TOPICS)],
@@ -111,6 +129,10 @@ class CollegeSeeder extends Seeder
 
         if ($hasCosts && ($record['cost_academic_year'] === null || ! in_array('costs', $topics, true))) {
             throw new \InvalidArgumentException("{$record['name']} has costs without an academic year and a 'costs' source.");
+        }
+
+        if ($record['admissions_data_source'] !== null && ! in_array('admissions', $topics, true)) {
+            throw new \InvalidArgumentException("{$record['name']} has admissions data without an 'admissions' source.");
         }
     }
 }

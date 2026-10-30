@@ -23,6 +23,18 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
 {
     public const MAX_EXPLANATION_LENGTH = 600;
 
+    /**
+     * Phrases that predict admission or label colleges by selectivity.
+     */
+    private const ADMISSION_PREDICTION_PATTERNS = [
+        '/\b(admission|acceptance)\s+(chances?|odds|likelihood)\b/i',
+        '/\bchances?\s+(of|for)\s+(getting\s+in|admission|acceptance|being\s+(admitted|accepted))\b/i',
+        '/\bodds\b/i',
+        '/\bguarantee[sd]?\b/i',
+        '/\b(likely|unlikely)\s+to\s+(get\s+in|be\s+(admitted|accepted))\b/i',
+        '/\b(reach|safety|target)\s+(school|college)s?\b/i',
+    ];
+
     private const SYSTEM_PROMPT = <<<'PROMPT'
         You help a high school women's soccer player understand college recommendations in a demo app that uses fictional athlete profiles.
 
@@ -35,6 +47,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         - Never call a college affordable unless its cost is "within budget". If it is above budget or unknown, say so plainly.
         - Do not mention any dollar amount that is not in the provided facts.
         - Do not predict or promise admission, scholarships, roster spots, playing time, or recruitment. A club league does not determine which NCAA division a player can compete in.
+        - Never discuss admission chances or label a college a reach, match, target, or safety. Do not use the words "chances", "odds", or "guarantee". If the athlete's test score is below the middle 50%, do not discourage her: colleges admit students below that range and consider much more than test scores.
         - Write directly to the athlete ("you"), in plain language a high school student understands.
         PROMPT;
 
@@ -131,6 +144,8 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
                 : 'unknown',
             'published_cost_of_attendance_before_aid' => $this->costFacts($match),
             'merit_scholarships' => $match->college->merit_aid->label(),
+            'sat_act_policy' => $match->college->test_policy?->federalLabel() ?? 'unknown',
+            'athlete_test_score_compared_with_first_year_students' => $this->academicFitFact($match->academicFit),
             'matched_preferences' => $match->matchedOn,
             'unknown_facts' => $match->unknowns,
             'tradeoff' => $match->tradeoff,
@@ -172,6 +187,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
 
             $this->assertNoOtherColleges($text, $matchesById->get($id)->college);
             $this->assertOnlyKnownAmounts($text, $matchesById->get($id));
+            $this->assertNoAdmissionPredictions($text);
 
             $explanations[$id] = $text;
         }
@@ -273,6 +289,31 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
                 throw new InvalidExplanationException("The AI response mentioned an unverified dollar amount (\${$amount}).");
             }
         }
+    }
+
+    /**
+     * Reject text that predicts admission or sorts colleges by how hard they are to get into.
+     */
+    private function assertNoAdmissionPredictions(string $text): void
+    {
+        foreach (self::ADMISSION_PREDICTION_PATTERNS as $pattern) {
+            if (preg_match($pattern, $text, $found) === 1) {
+                throw new InvalidExplanationException("The AI response predicted admission (\"{$found[0]}\").");
+            }
+        }
+    }
+
+    /**
+     * Only the comparison result is sent, never the athlete's score or GPA.
+     */
+    private function academicFitFact(AcademicFit $fit): string
+    {
+        return match ($fit->status) {
+            AcademicFitStatus::WithinRange => "{$fit->test} score is within the middle 50% of first-year students who submitted {$fit->test} scores",
+            AcademicFitStatus::AboveRange => "{$fit->test} score is above the middle 50% of first-year students who submitted {$fit->test} scores",
+            AcademicFitStatus::BelowRange => "{$fit->test} score is below the middle 50% of first-year students who submitted {$fit->test} scores; one in four of those students scored below this range",
+            AcademicFitStatus::NotCompared => 'not compared (no score entered or no reliable data); do not mention test scores',
+        };
     }
 
     private function failure(string $message, \Throwable $e): ExplanationResult

@@ -153,6 +153,41 @@ class ClaudeRecommendationExplainerTest extends TestCase
         $this->explainer()->validateResponse('Here are some colleges you might like!', $this->results());
     }
 
+    public function test_it_rejects_explanations_that_predict_admission(): void
+    {
+        $results = $this->results();
+
+        foreach ([
+            'Your chances of getting in are strong here.',
+            'This is a safety school for you.',
+            'You are likely to be admitted.',
+            'The odds are in your favor.',
+            'Your admission chances look good.',
+        ] as $prediction) {
+            $texts = $this->validTexts($results);
+            $texts[array_key_first($texts)] = $prediction;
+
+            try {
+                $this->explainer()->validateResponse($this->response($texts), $results);
+                $this->fail("Accepted an admission prediction: {$prediction}");
+            } catch (InvalidExplanationException $e) {
+                $this->assertStringContainsString('predicted admission', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_the_request_shares_only_the_test_score_comparison_never_the_score(): void
+    {
+        $results = $this->results();
+
+        $colleges = json_decode($this->explainer()->buildRequest($this->answers, $results), true)['colleges'];
+
+        foreach ($colleges as $college) {
+            $this->assertMatchesRegularExpression('/^(SAT score is (within|above|below) the middle 50%|not compared)/', $college['athlete_test_score_compared_with_first_year_students']);
+            $this->assertArrayHasKey('sat_act_policy', $college);
+        }
+    }
+
     public function test_the_request_contains_only_preferences_and_verified_facts(): void
     {
         $results = $this->results();

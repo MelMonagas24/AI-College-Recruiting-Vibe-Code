@@ -150,6 +150,23 @@
         .afford.fits { background: #f0fdf4; border-color: #86efac; }
         .afford.fits h3 { color: #166534; }
         .afford.neutral h3 { color: #374151; }
+        .academic { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #ddd6fe; background: #f5f3ff; display: grid; gap: 6px; }
+        .academic h3 { margin: 0; color: #3b2a8f; }
+        .academic p { margin: 0; }
+        .academic .fit { font-weight: 600; }
+        .academic .fine { display: block; margin-top: 2px; }
+        .also-fits { margin: 28px 0 16px; }
+        .also-fits > h2 { color: #3b2a8f; font-size: 1.35rem; margin-bottom: 6px; }
+        .also-fits > p { margin-bottom: 8px; }
+        .also-fits > .fine { margin-bottom: 14px; }
+        details.also { padding: 0; border-color: #ddd6fe; }
+        details.also > summary { cursor: pointer; padding: 16px 20px; display: grid; gap: 6px; list-style: none; }
+        details.also > summary::-webkit-details-marker { display: none; }
+        details.also > summary::after { content: "See details ▾"; font-size: 0.9rem; font-weight: 600; color: #3b2a8f; }
+        details.also[open] > summary::after { content: "Hide details ▴"; }
+        details.also > summary:focus-visible { outline: 3px solid #3b2a8f; outline-offset: 2px; border-radius: 16px; }
+        .also-name { font-size: 1.15rem; font-weight: 700; color: #1f2937; }
+        .also-body { padding: 0 20px 20px; }
         .answers summary { cursor: pointer; font-weight: 650; color: #3b2a8f; }
         .answers dl { margin-top: 8px; }
         @media (max-width: 480px) {

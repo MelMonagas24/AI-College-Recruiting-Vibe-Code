@@ -12,8 +12,10 @@ use Illuminate\Support\Collection;
  * Only facts stored in the database are used. Published costs are prices before
  * financial aid, so they are compared to the family's after-aid budget only to show
  * how much grants or scholarships would need to cover, never as the family's cost.
- * GPA, test scores, position and club league are not used: the database has no
- * admissions or roster data, and a club league cannot decide a player's division.
+ * SAT and ACT scores only change the order of colleges, and only when a reliable
+ * comparison exists (see AcademicFit); they never remove a college. GPA is never
+ * scored, because colleges report it on different scales. Position and club league
+ * are not used: there is no roster data, and a club league cannot decide a division.
  */
 class CollegeMatcher
 {
@@ -73,19 +75,20 @@ class CollegeMatcher
             ->filter(fn (?int $cost): bool => $cost !== null);
         $costRange = $knownCosts->isEmpty() ? null : [$knownCosts->min(), $knownCosts->max()];
 
-        $ranked = $withMajor
+        $qualifying = $withMajor
             ->map(fn (College $college): CollegeMatch => $this->evaluate($college, $answers, $costRange))
-            ->filter(fn (CollegeMatch $match): bool => $match->score >= self::MINIMUM_SCORE)
+            ->filter(fn (CollegeMatch $match): bool => $match->preferenceScore >= self::MINIMUM_SCORE)
             ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [$b->score, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
                 <=> [$a->score, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
-            ->take(self::MAXIMUM_RESULTS)
             ->values();
+
+        $ranked = $qualifying->take(self::MAXIMUM_RESULTS)->values();
 
         $shortfallReasons = $ranked->count() < self::MINIMUM_RESULTS
             ? $this->explainShortfall($answers, $eligible->count(), $inDivision->count(), $withMajor->count(), $ranked->count())
             : [];
 
-        return new MatchResults($ranked, $shortfallReasons);
+        return new MatchResults($ranked, $shortfallReasons, $qualifying->slice(self::MAXIMUM_RESULTS)->values());
     }
 
     /**
@@ -198,13 +201,29 @@ class CollegeMatcher
             $tradeoffs[] = 'Division III schools do not offer athletic scholarships; aid is academic or need-based.';
         }
 
+        $preferenceScore = $possible > 0 ? round($earned / $possible, 4) : 1.0;
+
+        $academicFit = AcademicFit::for($college, $answers);
+
+        if ($academicFit->credit() !== null) {
+            $possible += $weights['academic'];
+            $earned += $weights['academic'] * $academicFit->credit();
+        }
+
+        if (in_array($academicFit->status, [AcademicFitStatus::WithinRange, AcademicFitStatus::AboveRange], true)) {
+            $position = $academicFit->status === AcademicFitStatus::WithinRange ? 'within' : 'above';
+            $matchedOn[] = "Your {$academicFit->test} score is {$position} the middle 50% at this college ({$college->admissions_term})";
+        }
+
         return new CollegeMatch(
             college: $college,
             score: $possible > 0 ? round($earned / $possible, 4) : 1.0,
+            preferenceScore: $preferenceScore,
             matchedOn: $matchedOn,
             unknowns: $unknowns,
             tradeoff: $tradeoffs[0] ?? null,
             affordability: $affordability,
+            academicFit: $academicFit,
         );
     }
 
@@ -212,14 +231,14 @@ class CollegeMatcher
      * How much each preference counts. Affordability always weighs most, and the
      * athlete's top priority shifts weight toward what she values.
      *
-     * @return array{major: float, budget: float, merit: float, setting: float, size: float}
+     * @return array{major: float, budget: float, merit: float, setting: float, size: float, academic: float}
      */
     private function weights(string $priority): array
     {
-        $weights = ['major' => 2.0, 'budget' => 3.0, 'merit' => 1.0, 'setting' => 2.0, 'size' => 2.0];
+        $weights = ['major' => 2.0, 'budget' => 3.0, 'merit' => 1.0, 'setting' => 2.0, 'size' => 2.0, 'academic' => 2.0];
 
         return match ($priority) {
-            'academics' => [...$weights, 'major' => 4.0],
+            'academics' => [...$weights, 'major' => 4.0, 'academic' => 4.0],
             'affordability' => [...$weights, 'budget' => 10.0, 'merit' => 2.0],
             'social_life' => [...$weights, 'setting' => 3.0, 'size' => 3.0],
             default => $weights,

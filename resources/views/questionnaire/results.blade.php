@@ -59,118 +59,51 @@
     @endif
 
     @foreach ($results->matches as $match)
-        @php
-            $college = $match->college;
-            $explanation = $explanations->for($college->id);
-            $costSource = $college->sources->firstWhere('topic', 'costs');
-            $athleticsSource = $college->sources->firstWhere('topic', 'athletics');
-        @endphp
-
         <article class="card match">
             <header>
-                <h2>{{ $college->name }}</h2>
+                <h2>{{ $match->college->name }}</h2>
                 <p class="meta">
-                    <span class="pill">NCAA {{ $divisionNames[$college->ncaa_division] }}</span>
-                    @if ($college->conference)
-                        <span>{{ $college->conference }}</span>
+                    <span class="pill">NCAA {{ $divisionNames[$match->college->ncaa_division] }}</span>
+                    @if ($match->college->conference)
+                        <span>{{ $match->college->conference }}</span>
                     @endif
-                    <span>{{ $college->city }}, {{ $college->state }}</span>
+                    <span>{{ $match->college->city }}, {{ $match->college->state }}</span>
                 </p>
             </header>
 
-            <section class="why">
-                <h3>Why it fits</h3>
-                @if ($explanation !== null)
-                    <p><span class="badge ai">AI-generated</span> {{ $explanation }}</p>
-                    <p class="fine">Written by Claude using only the verified facts below. Double-check anything important with the college.</p>
-                @else
-                    <p><span class="badge off">Personalized explanation unavailable</span></p>
-                @endif
-            </section>
-
-            @include('questionnaire.partials.affordability', ['affordability' => $match->affordability])
-
-            @if ($match->matchedOn !== [])
-                <section>
-                    <h3>Matches your preferences <span class="fine">(from our verified data)</span></h3>
-                    <ul class="checks">
-                        @foreach ($match->matchedOn as $reason)
-                            <li>{{ $reason }}</li>
-                        @endforeach
-                    </ul>
-                </section>
-            @endif
-
-            @if ($match->tradeoff)
-                <section>
-                    <h3>Tradeoff to consider</h3>
-                    <p>{{ $match->tradeoff }}</p>
-                </section>
-            @endif
-
-            @if ($match->unknowns !== [])
-                <section>
-                    <h3>Not verified yet</h3>
-                    <ul>
-                        @foreach ($match->unknowns as $unknown)
-                            <li>{{ $unknown }}</li>
-                        @endforeach
-                    </ul>
-                </section>
-            @endif
-
-            <dl class="facts">
-                <div>
-                    <dt>Campus environment</dt>
-                    <dd>{{ $college->campus_environment?->label() ?? 'Not verified' }}
-                        @if ($college->federal_locale)<small>Federal location code: {{ $college->federal_locale }}</small>@endif
-                    </dd>
-                </div>
-                <div>
-                    <dt>Size</dt>
-                    <dd>
-                        @if ($college->undergraduate_enrollment)
-                            {{ $college->size->label() }}
-                            <small>{{ number_format($college->undergraduate_enrollment) }} undergraduates ({{ $college->enrollment_term }})</small>
-                        @else
-                            Not verified
-                        @endif
-                    </dd>
-                </div>
-                <div>
-                    <dt>Published cost of attendance, {{ $college->cost_academic_year ?? '2026-27' }} (before financial aid)</dt>
-                    <dd>
-                        @if ($college->cost_of_attendance_in_state === null)
-                            Not verified yet
-                        @elseif ($college->cost_of_attendance_in_state === $college->cost_of_attendance_out_of_state)
-                            {{ $money($college->cost_of_attendance_in_state) }} per year
-                        @else
-                            {{ $money($college->cost_of_attendance_in_state) }} in-state · {{ $money($college->cost_of_attendance_out_of_state) }} out-of-state
-                        @endif
-                        @if ($college->cost_of_attendance_is_complete === false)
-                            <small>Does not include every expense: {{ $college->cost_note }}</small>
-                        @endif
-                    </dd>
-                </div>
-                <div>
-                    <dt>Merit scholarships</dt>
-                    <dd>{{ $college->merit_aid->label() }}
-                        @if ($college->ncaa_division === 3)<small>Division III schools do not offer athletic scholarships.</small>@endif
-                    </dd>
-                </div>
-                <div>
-                    <dt>Data status</dt>
-                    <dd>{{ $college->verification_status->label() }} <small>Checked {{ $college->last_verified_on?->format('F j, Y') }}</small></dd>
-                </div>
-            </dl>
-
-            <p class="sources">
-                Sources:
-                @if ($athleticsSource)<a href="{{ $athleticsSource->url }}" target="_blank" rel="noopener">Women's soccer ({{ $athleticsSource->data_period }})</a>@endif
-                @if ($costSource)<a href="{{ $costSource->url }}" target="_blank" rel="noopener">Costs ({{ $costSource->data_period }})</a>@endif
-            </p>
+            @include('questionnaire.partials.match-details', ['isTopMatch' => true])
         </article>
     @endforeach
+
+    @if ($results->alsoFits->isNotEmpty())
+        <section class="also-fits" aria-labelledby="also-fits-heading">
+            <h2 id="also-fits-heading">Also fits your preferences</h2>
+            <p>
+                {{ $results->alsoFits->count() === 1 ? 'This college also meets' : 'These '.$results->alsoFits->count().' colleges also meet' }}
+                what you're looking for. {{ $results->alsoFits->count() === 1 ? 'It is a valid option' : 'They are valid options' }}, listed here only because we show five top matches at a time.
+            </p>
+            <p class="fine">
+                Test scores can change the order of colleges, but a score below a college's typical range is not a reason to skip it.
+                Colleges admit students outside that range and consider much more than test scores. Select any college to see its full details.
+            </p>
+
+            @foreach ($results->alsoFits as $match)
+                <details class="card match also">
+                    <summary>
+                        <span class="also-name">{{ $match->college->name }}</span>
+                        <span class="meta">
+                            <span class="pill">NCAA {{ $divisionNames[$match->college->ncaa_division] }}</span>
+                            <span>{{ $match->college->city }}, {{ $match->college->state }}</span>
+                        </span>
+                    </summary>
+
+                    <div class="also-body">
+                        @include('questionnaire.partials.match-details', ['isTopMatch' => false])
+                    </div>
+                </details>
+            @endforeach
+        </section>
+    @endif
 
     <div class="card">
         <h3>How these matches were chosen</h3>
@@ -179,7 +112,8 @@
             <li>Colleges are filtered by your division choice and your planned major, then ranked by budget, campus environment, size, and what matters most to you. Affordability counts the most.</li>
             <li>Published costs are prices before grants and scholarships. Your family's actual cost will likely be different. Use each college's Net Price Calculator for a personal estimate.</li>
             <li>Public colleges show their in-state price only if you live in the same state ({{ $homeStateName }}); otherwise they show the out-of-state price. Each college decides who qualifies as an in-state resident.</li>
-            <li>Your GPA, test scores, position, and club league were not used to rank colleges, because our database has no admissions or roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
+            <li><strong>Academic fit:</strong> When reliable data exists, we compare your SAT or ACT score with the middle 50% of first-year students who submitted that test. A score within or above the range earns full credit, and a score below it still earns most of the credit. Academic fit can change the order of your matches but never removes a college: every college that meets your preferences is shown, either as a top match or under "Also fits your preferences." If you didn't enter a score, or a college doesn't have reliable data, test scores don't affect that college. GPA is shown for context only.</li>
+            <li>Your position and club league were not used to rank colleges, because our database has no roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
             <li>These results do not guarantee admission, scholarships, roster spots, or recruitment. Talk with college coaches and admissions offices.</li>
         </ul>
     </div>
