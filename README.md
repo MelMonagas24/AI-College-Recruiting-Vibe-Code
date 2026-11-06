@@ -19,22 +19,44 @@ php artisan db:seed --class=CollegeSeeder
 
 ## College Recommendations
 
-After an athlete submits the questionnaire, the results page shows 3–5 colleges from the database. Answers are used only to build that page and are never saved. The app is a demo for fictional athlete profiles only.
+After an athlete submits the questionnaire, the results page sorts colleges from the database into two groups. Answers are used only to build that page and are never saved. The app is a demo for fictional athlete profiles only.
+
+### Strong Matches vs. Other Options to Consider
+
+Every college that passes the division and major filters is placed in exactly one group:
+
+| | **Strong Matches** | **Other Options to Consider** |
+|---|---|---|
+| **Meaning** | Meets the athlete's division, major, size, and budget, each confirmed by verified data. | In her division and could be worth exploring, but misses or can't confirm at least one of those criteria. |
+| **Major** | Confirmed in federal degree data. | Not confirmed ("We couldn't confirm that it offers…"). |
+| **Size** | Verified enrollment is in her chosen size range. | Wrong size, or enrollment not verified. |
+| **Budget** | Published cost at her correct in-state or out-of-state rate is within her budget range. | Above budget (shows by how much, and that financial aid could close some or all of the gap), or cost not verified. |
+| **Card shows** | A green "Strong Match" label and what it matches. | An orange label with the number of tradeoffs, and every tradeoff listed. |
+| **Order** | Best overall score first. | Fewest tradeoffs first, then best score. |
+
+- **Answers that turn a check off:** "Undecided" or "Other" for major and "No preference" for size are not checked, and the page says so.
+- **"Unsure" budget:** affordability is not checked or confirmed. Colleges are not penalized for unknown costs, but Strong Match cards say "Budget not checked", and each card explains that the cost was not compared with a budget.
+- **"$45,000+" budget:** it has no upper limit, so any verified published cost counts for the budget check. The card never calls an expensive college "within budget": it shows the actual published cost, labels it "Open-ended budget", and says the family decides whether it is affordable.
+- **Campus setting and academic fit** only change the order inside a group. They never move a college between groups. A setting mismatch appears as "Also note".
+- **No Strong Matches:** the page says so clearly and lists the closest alternatives, each with its tradeoffs. If fewer than 3 alternatives meet at least half of her preferences, the next closest are added (up to 3) and labeled as meeting fewer than half.
+- **Full cards and expandable cards:** up to 5 Strong Matches and 3 Other Options (5 when there are no Strong Matches) are shown as full cards. The rest are in "More strong matches" and "More options to consider" lists that expand when selected, so no college is hidden.
+
+### How colleges are filtered and ranked
 
 1. **Eligibility:** only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.
 2. **Filters:** the athlete's division choice, and her major (colleges known not to offer it are removed; colleges where it is unknown stay and are flagged).
 3. **Ranking:** budget, campus environment, size, and what matters most. Affordability counts the most. Published costs are prices before aid, so they are compared to the family's after-aid budget only to show how much grants or scholarships would need to cover.
 4. **In-state vs. out-of-state:** the athlete's home state (question 10) decides which published price applies. A public college shows its in-state price only when she lives in the same state; otherwise, including athletes outside the U.S., it shows the out-of-state price. Private colleges charge everyone the same published price. Each college sets its own residency rules.
-5. **Affordability warnings:** each result says whether the published cost is within, above, or possibly above the family's budget range, by how much, and that financial aid could change the actual cost. Unverified costs are labeled "Cost not verified" and are never called affordable. Scholarships are never estimated.
+5. **Affordability warnings:** each result says whether the published cost is within or above the family's budget range (or, for "$45,000+", shows the cost for the family to judge), by how much, and that financial aid could change the actual cost. Unverified costs are labeled "Cost not verified" and are never called affordable. Scholarships are never estimated.
 6. **Academic fit:** an SAT or ACT score is compared with a college's middle 50% only when that range comes from the college's 2025-26 Common Data Set and at least 25% of first-year students submitted that test. Within or above the range earns full credit, and below it earns 75%. Academic fit can change the order of colleges but never decides whether a college can appear, and athletes without scores are never penalized. SAT and ACT are never converted. GPA is shown only as context, because colleges report it on different scales. The 12 colleges without a findable Common Data Set show federal College Scorecard data (Fall 2024), which is never used for scoring. Admission rates are shown as facts, never as an athlete's chances.
 7. **Not used:** position and club league, because the database has no roster data, and a club league cannot decide a player's NCAA division.
-8. **Fewer than 3 matches:** the page shows only the colleges that fit and explains why, instead of adding poor matches.
+8. **Fewer than 3 colleges:** when the division and major leave fewer than 3 colleges, or when there is a Strong Match but few other colleges meet her preferences, the page explains why instead of adding poor matches.
 
 The matching logic is in `app/Recommendations/CollegeMatcher.php`.
 
 ### AI explanations (optional)
 
-Claude can write a short personalized explanation for each recommended college. Claude never chooses colleges: it only receives the matched colleges' verified facts and the athlete's preferences (no name, GPA, test scores, or home state; only whether the in-state or out-of-state price applies). Its answer is rejected if it mentions a college that was not recommended or a dollar amount that is not in the verified data.
+Claude can write a short personalized explanation for each recommended college. Claude never chooses colleges: it only receives the matched colleges' verified facts and the athlete's preferences (no name, GPA, test scores, or home state; only whether the in-state or out-of-state price applies). Explanations are written for the first 5 colleges on the page only. Its answer is rejected if it mentions a college that was not recommended or a dollar amount that is not in the verified data, predicts admission, calls an Other Option a "perfect" or "ideal" fit, or says a cost is within the budget or affordable when that hasn't been confirmed.
 
 Without an API key, the app works normally and labels explanations as unavailable. To turn them on:
 

@@ -94,9 +94,10 @@ class CollegeMatcherTest extends TestCase
 
         $results = $this->matcher()->match($this->fictionalAthlete(['major' => 'education']));
 
-        $this->assertCount(3, $results->matches);
-        $results->matches->each(function (CollegeMatch $match): void {
-            $this->assertStringContainsString("could not confirm whether it offers a bachelor's degree in Education", $match->unknowns[0]);
+        $this->assertFalse($results->hasStrongMatches());
+        $this->assertCount(3, $results->otherOptions);
+        $results->otherOptions->each(function (CollegeMatch $match): void {
+            $this->assertStringContainsString("We couldn't confirm that it offers a bachelor's degree in Education, so this match can't be confirmed.", $match->tradeoffs[0]);
             $this->assertNotContains('Offers Education (federal degree data)', $match->matchedOn);
         });
     }
@@ -117,8 +118,9 @@ class CollegeMatcherTest extends TestCase
         $this->assertSame(AffordabilityStatus::CostUnknown, $match->affordability->status);
         $this->assertNull($match->affordability->cost);
         $this->assertNull($match->affordability->gap);
-        $this->assertStringContainsString('cost of attendance is not verified yet', implode(' ', $match->unknowns));
-        $this->assertStringNotContainsString('$', implode(' ', [...$match->unknowns, ...$match->matchedOn]));
+        $this->assertFalse($match->isStrongMatch());
+        $this->assertSame(["Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $match->tradeoffs);
+        $this->assertStringNotContainsString('$', implode(' ', [...$match->unknowns, ...$match->matchedOn, ...$match->tradeoffs]));
     }
 
     public function test_affordability_ranks_lower_published_costs_first(): void
@@ -142,8 +144,9 @@ class CollegeMatcherTest extends TestCase
 
         $results = $this->matcher()->match($this->fictionalAthlete(['budget' => 'under_15k']));
 
-        $this->assertSame($results->matches->count(), $results->aboveBudgetCount() + $results->unknownCostCount());
-        $results->matches->each(fn (CollegeMatch $match) => $this->assertNotContains(
+        $this->assertSame($results->all()->count(), $results->aboveBudgetCount() + $results->unknownCostCount());
+        $this->assertFalse($results->hasStrongMatches());
+        $results->all()->each(fn (CollegeMatch $match) => $this->assertNotContains(
             'Published cost is within your family\'s budget range, even before aid',
             $match->matchedOn,
         ));
@@ -217,30 +220,190 @@ class CollegeMatcherTest extends TestCase
         $this->assertNull(Affordability::for($expensive, 'OH', CollegeMatcher::BUDGET_RANGES['45k_plus'])->gap);
     }
 
-    public function test_it_shows_fewer_results_and_explains_why_instead_of_poor_matches(): void
+    public function test_with_a_strong_match_it_does_not_pad_results_with_poor_alternatives(): void
     {
-        $this->seed(CollegeSeeder::class);
+        College::factory()->create(['ncaa_division' => 1, 'cost_of_attendance_in_state' => 14000, 'cost_of_attendance_out_of_state' => 14000]);
+        College::factory()->count(3)->create(['ncaa_division' => 1, 'undergraduate_enrollment' => 30000, 'merit_aid' => 'not_offered']);
 
         $results = $this->matcher()->match($this->fictionalAthlete([
             'division' => 'division_1',
-            'major' => 'nursing',
             'budget' => 'under_15k',
-            'setting' => 'rural',
-            'size' => 'small',
+            'size' => 'medium',
+            'priority' => 'affordability',
         ]));
 
+        $this->assertCount(1, $results->strongMatches);
+        $this->assertCount(0, $results->otherOptions);
         $this->assertTrue($results->hasShortfall());
-        $this->assertLessThan(CollegeMatcher::MINIMUM_RESULTS, $results->matches->count());
-        $results->matches->each(fn (CollegeMatch $match) => $this->assertGreaterThanOrEqual(CollegeMatcher::MINIMUM_SCORE, $match->score));
-        $this->assertStringContainsString('8 of them compete in Division I', implode(' ', $results->shortfallReasons));
+        $this->assertStringContainsString('4 of them compete in Division I', implode(' ', $results->shortfallReasons));
+        $this->assertStringContainsString('Rather than suggest poor matches', implode(' ', $results->shortfallReasons));
     }
 
-    public function test_preference_mismatches_become_tradeoffs(): void
+    public function test_it_explains_when_the_division_and_major_leave_fewer_than_three_colleges(): void
+    {
+        College::factory()->count(2)->create(['ncaa_division' => 2]);
+        College::factory()->count(3)->create(['ncaa_division' => 3]);
+
+        $results = $this->matcher()->match($this->fictionalAthlete(['division' => 'division_2', 'budget' => 'under_15k']));
+
+        $this->assertTrue($results->hasShortfall());
+        $this->assertCount(2, $results->all());
+        $this->assertStringContainsString('2 of them compete in Division II', implode(' ', $results->shortfallReasons));
+        $this->assertStringContainsString('All 2 are shown below.', implode(' ', $results->shortfallReasons));
+    }
+
+    public function test_campus_setting_is_a_note_that_never_demotes_a_strong_match(): void
     {
         College::factory()->create(['federal_locale' => 'Town: Distant', 'undergraduate_enrollment' => 2000]);
 
         $match = $this->matcher()->match($this->fictionalAthlete(['setting' => 'urban', 'size' => 'small']))->matches->first();
 
-        $this->assertSame('Its campus is Rural, not urban.', $match->tradeoff);
+        $this->assertTrue($match->isStrongMatch());
+        $this->assertContains('Its campus is Rural, not urban.', $match->notes);
+    }
+
+    public function test_a_strong_match_meets_major_size_and_budget_at_the_correct_rate(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $results = $this->matcher()->match($this->fictionalAthlete([
+            'division' => 'division_3',
+            'major' => 'education',
+            'budget' => '30k_45k',
+            'home_state' => 'NJ',
+            'size' => 'medium',
+            'priority' => 'affordability',
+        ]));
+
+        $this->assertSame(['TCNJ'], $results->strongMatches->pluck('college.short_name')->all());
+        $tcnj = $results->strongMatches->first();
+        $this->assertSame(44640, $tcnj->affordability->cost);
+        $this->assertSame('in-state', $tcnj->affordability->rate);
+        $this->assertSame([], $tcnj->tradeoffs);
+
+        $this->assertSame(['Montclair State', 'Scranton'], $results->otherOptions->pluck('college.short_name')->all());
+        $this->assertSame(['It\'s a Large college (18,712 undergraduates, Fall 2024), not medium.'], $results->otherOptions[0]->tradeoffs);
+        $this->assertCount(2, $results->otherOptions[1]->tradeoffs, 'Scranton is above budget and small, and both tradeoffs are listed.');
+        $this->assertStringContainsString('is $30,710 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap', $results->otherOptions[1]->tradeoffs[0]);
+    }
+
+    public function test_out_of_state_pricing_can_turn_a_strong_match_into_an_other_option(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $results = $this->matcher()->match($this->fictionalAthlete([
+            'division' => 'division_3',
+            'major' => 'education',
+            'budget' => '30k_45k',
+            'home_state' => 'PA',
+            'size' => 'medium',
+            'priority' => 'affordability',
+        ]));
+
+        $this->assertFalse($results->hasStrongMatches());
+        $tcnj = $results->otherOptions->first();
+        $this->assertSame('TCNJ', $tcnj->college->short_name, 'The closest alternative is listed first.');
+        $this->assertSame('out-of-state', $tcnj->affordability->rate);
+        $this->assertSame(['Its published cost, $51,174 per year (out-of-state rate), is $6,174 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap; the college\'s Net Price Calculator can estimate it. This college offers merit scholarships.'], $tcnj->tradeoffs);
+    }
+
+    public function test_other_options_with_fewer_tradeoffs_are_listed_first(): void
+    {
+        College::factory()->create(['name' => 'Fictional Two Tradeoffs College', 'undergraduate_enrollment' => 30000, 'cost_of_attendance_in_state' => 31000, 'cost_of_attendance_out_of_state' => 31000]);
+        College::factory()->create(['name' => 'Fictional One Tradeoff College', 'cost_of_attendance_in_state' => 70000, 'cost_of_attendance_out_of_state' => 70000]);
+
+        $results = $this->matcher()->match($this->fictionalAthlete(['budget' => '15k_30k', 'size' => 'medium']));
+
+        $this->assertSame(
+            ['Fictional One Tradeoff College', 'Fictional Two Tradeoffs College'],
+            $results->otherOptions->pluck('college.name')->all(),
+        );
+    }
+
+    public function test_an_open_ended_budget_is_met_by_any_verified_cost_and_still_shows_the_cost(): void
+    {
+        College::factory()->create(['cost_of_attendance_in_state' => 90000, 'cost_of_attendance_out_of_state' => 90000]);
+
+        $match = $this->matcher()->match($this->fictionalAthlete(['budget' => '45k_plus']))->matches->first();
+
+        $this->assertTrue($match->isStrongMatch());
+        $this->assertSame(AffordabilityStatus::MayExceedBudget, $match->affordability->status);
+        $this->assertSame(['You chose an open-ended budget ($45,000+), so this college still counts for the budget check. Its published cost is $90,000 per year before aid. Your family will need to decide whether that is affordable.'], $match->notes);
+        $this->assertStringNotContainsString('within', implode(' ', [...$match->matchedOn, ...$match->notes]), 'An expensive college is never called "within budget".');
+    }
+
+    public function test_an_unsure_budget_is_never_presented_as_checked(): void
+    {
+        College::factory()->create(['name' => 'Fictional Known Cost College', 'cost_of_attendance_in_state' => 30000, 'cost_of_attendance_out_of_state' => 30000]);
+        College::factory()->create(['name' => 'Fictional Unknown Cost College', 'cost_of_attendance_in_state' => null, 'cost_of_attendance_out_of_state' => null]);
+
+        $results = $this->matcher()->match($this->fictionalAthlete(['budget' => 'unsure']));
+
+        $this->assertCount(2, $results->strongMatches, 'Unknown costs are not penalized when the budget is "Unsure".');
+        $notes = $results->strongMatches->mapWithKeys(fn (CollegeMatch $match): array => [$match->college->name => $match->notes]);
+        $this->assertSame(['Affordability has not been checked: you chose "Unsure" for your family\'s budget, so this college\'s published cost ($30,000 per year, before aid) was not compared with a budget.'], $notes['Fictional Known Cost College']);
+        $this->assertSame(['Affordability has not been checked or confirmed: you chose "Unsure" for your family\'s budget, and this college\'s 2026-27 cost of attendance is not verified yet.'], $notes['Fictional Unknown Cost College']);
+        $results->strongMatches->each(fn (CollegeMatch $match) => $this->assertStringNotContainsString('budget range', implode(' ', $match->matchedOn)));
+    }
+
+    public function test_unverified_cost_or_size_is_never_a_strong_match(): void
+    {
+        College::factory()->create(['name' => 'Fictional Unknown Size College', 'undergraduate_enrollment' => null, 'cost_of_attendance_in_state' => 20000, 'cost_of_attendance_out_of_state' => 20000]);
+        College::factory()->create(['name' => 'Fictional Unknown Cost College', 'cost_of_attendance_in_state' => null, 'cost_of_attendance_out_of_state' => null]);
+
+        $results = $this->matcher()->match($this->fictionalAthlete(['budget' => '15k_30k', 'size' => 'medium']));
+
+        $this->assertFalse($results->hasStrongMatches());
+        $tradeoffs = $results->otherOptions->mapWithKeys(fn (CollegeMatch $match): array => [$match->college->name => $match->tradeoffs]);
+        $this->assertSame(["Its undergraduate enrollment isn't verified, so we can't confirm it's a medium college."], $tradeoffs['Fictional Unknown Size College']);
+        $this->assertSame(["Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $tradeoffs['Fictional Unknown Cost College']);
+    }
+
+    public function test_no_preference_unsure_and_undecided_are_not_checked(): void
+    {
+        College::factory()->create(['undergraduate_enrollment' => 30000, 'cost_of_attendance_in_state' => 90000, 'cost_of_attendance_out_of_state' => 90000]);
+
+        $answers = $this->fictionalAthlete(['major' => 'undecided', 'size' => 'no_preference', 'budget' => 'unsure']);
+        $results = $this->matcher()->match($answers);
+
+        $this->assertTrue($results->strongMatches->first()->isStrongMatch());
+        $this->assertSame(['major', 'size', 'budget'], CollegeMatcher::uncheckedCriteria($answers));
+        $this->assertSame([], CollegeMatcher::uncheckedCriteria(['major' => 'biology', 'size' => 'small', 'budget' => '15k_30k']));
+    }
+
+    public function test_with_no_strong_matches_the_closest_alternatives_are_shown_and_labeled(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $results = $this->matcher()->match($this->fictionalAthlete([
+            'division' => 'division_2',
+            'major' => 'nursing',
+            'budget' => '15k_30k',
+            'size' => 'small',
+            'priority' => 'affordability',
+        ]));
+
+        $this->assertFalse($results->hasStrongMatches());
+        $this->assertCount(CollegeMatcher::MINIMUM_RESULTS, $results->otherOptions);
+        $this->assertFalse($results->hasShortfall());
+        $this->assertSame('Tampa', $results->otherOptions->first()->college->short_name);
+        $this->assertTrue($results->otherOptions->first()->meetsMinimumScore());
+        $this->assertFalse($results->otherOptions->last()->meetsMinimumScore(), 'Fallback alternatives are marked so the page can label them.');
+        $results->otherOptions->each(fn (CollegeMatch $match) => $this->assertNotEmpty($match->tradeoffs));
+    }
+
+    public function test_full_cards_and_explanations_are_split_between_the_categories(): void
+    {
+        College::factory()->count(6)->create(['offers_education' => true, 'cost_of_attendance_in_state' => 20000, 'cost_of_attendance_out_of_state' => 20000]);
+        College::factory()->count(4)->create(['offers_education' => null, 'cost_of_attendance_in_state' => 20000, 'cost_of_attendance_out_of_state' => 20000]);
+
+        $results = $this->matcher()->match($this->fictionalAthlete(['major' => 'education', 'budget' => '15k_30k']));
+
+        $this->assertCount(5, $results->featuredStrongMatches());
+        $this->assertCount(1, $results->moreStrongMatches());
+        $this->assertCount(3, $results->featuredOtherOptions());
+        $this->assertCount(1, $results->moreOtherOptions());
+        $this->assertCount(CollegeMatcher::MAXIMUM_RESULTS, $results->matches, 'Personalized explanations stay limited to five colleges.');
+        $this->assertTrue($results->matches->every(fn (CollegeMatch $match): bool => $match->isStrongMatch()));
     }
 }

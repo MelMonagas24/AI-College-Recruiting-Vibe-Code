@@ -5,7 +5,7 @@
     $rate = $affordability->rate ? " ({$affordability->rate} rate)" : '';
     $collegeStateName = $options['states'][$college->state] ?? $college->state;
     $style = match ($affordability->status) {
-        AffordabilityStatus::AboveBudget, AffordabilityStatus::MayExceedBudget => 'over',
+        AffordabilityStatus::AboveBudget => 'over',
         AffordabilityStatus::WithinBudget => 'fits',
         default => 'neutral',
     };
@@ -23,10 +23,10 @@
             @break
 
         @case(AffordabilityStatus::MayExceedBudget)
-            <h3>Published cost may be above your family's budget</h3>
+            <h3>Open-ended budget: check this cost</h3>
             <p>
-                {{ $cost }} per year{{ $rate }}. You chose {{ $budgetLabel }}, so whether this fits depends on your family's exact budget.
-                Financial aid could lower what you would actually pay.
+                {{ $cost }} per year{{ $rate }}. You chose {{ $budgetLabel }}, an open-ended budget with no upper limit, so we can't say whether this cost is within your budget.
+                Your family will need to decide whether it is affordable. Financial aid could lower what you would actually pay.
             </p>
             @break
 
@@ -39,9 +39,9 @@
             @break
 
         @case(AffordabilityStatus::NoBudget)
-            <h3>Published cost</h3>
+            <h3>Affordability not checked</h3>
             <p>
-                {{ $cost }} per year{{ $rate }}. You chose "Unsure" for your family's budget, so we did not compare it.
+                {{ $cost }} per year{{ $rate }}. You chose "Unsure" for your family's budget, so we did not compare this cost with a budget or confirm that it is affordable.
                 Financial aid could lower what you would actually pay.
             </p>
             @break

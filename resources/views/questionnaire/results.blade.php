@@ -14,12 +14,26 @@
 @section('content')
     <h1>Your college matches</h1>
     <p class="intro">
-        @if ($results->matches->isEmpty())
+        @if ($results->all()->isEmpty())
             We couldn't find a college in our database that fits your answers well enough to recommend.
         @else
-            Based on your answers, here {{ $results->matches->count() === 1 ? 'is 1 college' : 'are '.$results->matches->count().' colleges' }} from our verified database of women's soccer programs.
+            Based on your answers, here {{ $results->all()->count() === 1 ? 'is 1 college' : 'are '.$results->all()->count().' colleges' }} from our verified database of women's soccer programs, in two groups.
         @endif
     </p>
+
+    @if ($results->all()->isNotEmpty())
+        <p class="summary">
+            <a href="#strong-heading">{{ $results->strongMatches->count() }} Strong {{ $results->strongMatches->count() === 1 ? 'Match' : 'Matches' }}</a>
+            <span aria-hidden="true">·</span>
+            <a href="#other-heading">{{ $results->otherOptions->count() }} Other {{ $results->otherOptions->count() === 1 ? 'Option' : 'Options' }} to Consider</a>
+        </p>
+        @if ($uncheckedCriteria !== [])
+            <p class="fine summary-note">
+                You chose {{ implode(' and ', array_map(fn (string $criterion): string => ['major' => '"'.$options['majors'][$answers['major']].'" for your major', 'size' => '"No preference" for size', 'budget' => '"Unsure" for budget'][$criterion], $uncheckedCriteria)) }},
+                so {{ count($uncheckedCriteria) === 1 ? 'that was' : 'those were' }} not checked. More colleges can be Strong Matches as a result.
+            </p>
+        @endif
+    @endif
 
     <div class="demo-banner" role="note">
         <strong>Demo only:</strong> these results are for fictional athlete profiles. Your answers are used only to build this page and are not saved.
@@ -32,12 +46,12 @@
         </div>
     @endif
 
-    @if ($results->matches->isNotEmpty() && $answers['budget'] !== 'unsure' && ($results->aboveBudgetCount() > 0 || $results->unknownCostCount() > 0))
+    @if ($results->all()->isNotEmpty() && $answers['budget'] !== 'unsure' && ($results->aboveBudgetCount() > 0 || $results->unknownCostCount() > 0))
         <div class="notice warn" role="status">
             <strong>Affordability check</strong>
             <ul>
                 @if ($results->aboveBudgetCount() > 0)
-                    <li>{{ $results->aboveBudgetCount() }} of {{ $results->matches->count() }} {{ $results->matches->count() === 1 ? 'college has' : 'colleges have' }} a published cost above your family's estimated budget ({{ $budgetLabel }} per year).</li>
+                    <li>{{ $results->aboveBudgetCount() }} of {{ $results->all()->count() }} {{ $results->all()->count() === 1 ? 'college has' : 'colleges have' }} a published cost above your family's estimated budget ({{ $budgetLabel }} per year). {{ $results->aboveBudgetCount() === 1 ? 'It is' : 'They are' }} listed under Other Options to Consider.</li>
                 @endif
                 @if ($results->unknownCostCount() > 0)
                     <li>{{ $results->unknownCostCount() }} {{ $results->unknownCostCount() === 1 ? 'college has' : 'colleges have' }} a cost we could not verify, so we can't tell whether {{ $results->unknownCostCount() === 1 ? 'it fits' : 'they fit' }} your budget.</li>
@@ -49,7 +63,7 @@
 
     @if ($results->hasShortfall())
         <div class="notice" role="status">
-            <strong>Why you're seeing {{ $results->matches->isEmpty() ? 'no matches' : 'fewer than 3 matches' }}</strong>
+            <strong>Why you're seeing {{ $results->all()->isEmpty() ? 'no matches' : 'fewer than 3 colleges' }}</strong>
             <ul>
                 @foreach ($results->shortfallReasons as $reason)
                     <li>{{ $reason }}</li>
@@ -58,50 +72,74 @@
         </div>
     @endif
 
-    @foreach ($results->matches as $match)
-        <article class="card match">
-            <header>
-                <h2>{{ $match->college->name }}</h2>
-                <p class="meta">
-                    <span class="pill">NCAA {{ $divisionNames[$match->college->ncaa_division] }}</span>
-                    @if ($match->college->conference)
-                        <span>{{ $match->college->conference }}</span>
+    @if ($results->all()->isNotEmpty())
+        <section class="category" aria-labelledby="strong-heading">
+            <h2 id="strong-heading">Strong Matches</h2>
+
+            @if ($results->hasStrongMatches())
+                <p>
+                    @if ($answers['budget'] === 'unsure')
+                        These colleges meet your division, major, and size, based on our verified data.
+                        <strong>Affordability has not been checked or confirmed</strong>, because you chose "Unsure" for your family's budget. Check each college's published cost.
+                    @elseif ($answers['budget'] === '45k_plus')
+                        These colleges meet your division, major, and size, based on our verified data. You chose an open-ended budget ($45,000+), so any verified published cost counts for the budget check.
+                        That doesn't mean every cost is affordable: each card shows the actual published cost so your family can decide.
+                    @else
+                        These colleges meet your division, major, size, and budget, based on our verified data.
                     @endif
-                    <span>{{ $match->college->city }}, {{ $match->college->state }}</span>
                 </p>
-            </header>
 
-            @include('questionnaire.partials.match-details', ['isTopMatch' => true])
-        </article>
-    @endforeach
+                @foreach ($results->featuredStrongMatches() as $match)
+                    @include('questionnaire.partials.college-card', ['expandable' => false])
+                @endforeach
 
-    @if ($results->alsoFits->isNotEmpty())
-        <section class="also-fits" aria-labelledby="also-fits-heading">
-            <h2 id="also-fits-heading">Also fits your preferences</h2>
-            <p>
-                {{ $results->alsoFits->count() === 1 ? 'This college also meets' : 'These '.$results->alsoFits->count().' colleges also meet' }}
-                what you're looking for. {{ $results->alsoFits->count() === 1 ? 'It is a valid option' : 'They are valid options' }}, listed here only because we show five top matches at a time.
-            </p>
-            <p class="fine">
-                Test scores can change the order of colleges, but a score below a college's typical range is not a reason to skip it.
-                Colleges admit students outside that range and consider much more than test scores. Select any college to see its full details.
-            </p>
+                @if ($results->moreStrongMatches()->isNotEmpty())
+                    <div class="more" aria-labelledby="more-strong-heading">
+                        <h3 id="more-strong-heading">More strong matches ({{ $results->moreStrongMatches()->count() }})</h3>
+                        <p class="fine">
+                            {{ $results->moreStrongMatches()->count() === 1 ? 'This college also meets' : 'These colleges also meet' }} all of your key criteria.
+                            {{ $results->moreStrongMatches()->count() === 1 ? 'It is' : 'They are' }} listed here only because we show five full cards at a time. Select any college to see its full details.
+                        </p>
 
-            @foreach ($results->alsoFits as $match)
-                <details class="card match also">
-                    <summary>
-                        <span class="also-name">{{ $match->college->name }}</span>
-                        <span class="meta">
-                            <span class="pill">NCAA {{ $divisionNames[$match->college->ncaa_division] }}</span>
-                            <span>{{ $match->college->city }}, {{ $match->college->state }}</span>
-                        </span>
-                    </summary>
-
-                    <div class="also-body">
-                        @include('questionnaire.partials.match-details', ['isTopMatch' => false])
+                        @foreach ($results->moreStrongMatches() as $match)
+                            @include('questionnaire.partials.college-card', ['expandable' => true])
+                        @endforeach
                     </div>
-                </details>
+                @endif
+            @else
+                <div class="notice" role="status">
+                    <strong>No Strong Matches</strong>
+                    <p>
+                        No college in our database meets all of your key criteria (division, major, size, and budget).
+                        The colleges below are the closest alternatives. Each one lists exactly what doesn't match, so please don't read any of them as a perfect fit.
+                    </p>
+                </div>
+            @endif
+        </section>
+    @endif
+
+    @if ($results->otherOptions->isNotEmpty())
+        <section class="category" aria-labelledby="other-heading">
+            <h2 id="other-heading">Other Options to Consider</h2>
+            <p>
+                These colleges are in your division and could still be worth exploring, but each one has at least one tradeoff, listed on its card.
+                Colleges with the fewest tradeoffs are listed first. A published cost above your budget doesn't rule a college out: financial aid could lower what you would actually pay.
+            </p>
+
+            @foreach ($results->featuredOtherOptions() as $match)
+                @include('questionnaire.partials.college-card', ['expandable' => false])
             @endforeach
+
+            @if ($results->moreOtherOptions()->isNotEmpty())
+                <div class="more" aria-labelledby="more-other-heading">
+                    <h3 id="more-other-heading">More options to consider ({{ $results->moreOtherOptions()->count() }})</h3>
+                    <p class="fine">Each of these has its tradeoffs listed too. Select any college to see its full details.</p>
+
+                    @foreach ($results->moreOtherOptions() as $match)
+                        @include('questionnaire.partials.college-card', ['expandable' => true])
+                    @endforeach
+                </div>
+            @endif
         </section>
     @endif
 
@@ -109,10 +147,13 @@
         <h3>How these matches were chosen</h3>
         <ul>
             <li>Only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.</li>
-            <li>Colleges are filtered by your division choice and your planned major, then ranked by budget, campus environment, size, and what matters most to you. Affordability counts the most.</li>
+            <li>Colleges are filtered by your division choice and your planned major. Colleges known not to offer your major are removed.</li>
+            <li><strong>Strong Matches</strong> meet your major, size, and budget, each confirmed by verified data. A college we can't confirm offers your major, or whose cost or size isn't verified, is never called a Strong Match. A "$45,000+" budget has no upper limit, so any verified published cost counts for the budget check, but the card shows the actual cost and your family decides whether it is affordable. If you chose "Unsure" for budget, affordability is not checked at all, and a Strong Match says nothing about cost.</li>
+            <li><strong>Other Options to Consider</strong> miss or can't confirm at least one of those criteria, and every tradeoff is listed on the card. They are sorted by fewest tradeoffs first.</li>
+            <li>Within each group, colleges are ranked by budget, campus environment, size, merit scholarships, academic fit, and what matters most to you. Affordability counts the most. Campus environment only changes the order; it never moves a college between groups.</li>
             <li>Published costs are prices before grants and scholarships. Your family's actual cost will likely be different. Use each college's Net Price Calculator for a personal estimate.</li>
             <li>Public colleges show their in-state price only if you live in the same state ({{ $homeStateName }}); otherwise they show the out-of-state price. Each college decides who qualifies as an in-state resident.</li>
-            <li><strong>Academic fit:</strong> When reliable data exists, we compare your SAT or ACT score with the middle 50% of first-year students who submitted that test. A score within or above the range earns full credit, and a score below it still earns most of the credit. Academic fit can change the order of your matches but never removes a college: every college that meets your preferences is shown, either as a top match or under "Also fits your preferences." If you didn't enter a score, or a college doesn't have reliable data, test scores don't affect that college. GPA is shown for context only.</li>
+            <li><strong>Academic fit:</strong> When reliable data exists, we compare your SAT or ACT score with the middle 50% of first-year students who submitted that test. A score within or above the range earns full credit, and a score below it still earns most of the credit. Academic fit can change the order of your matches but never removes a college or moves it between groups, and a score below a college's typical range is not a reason to skip it: colleges admit students outside that range and consider much more than test scores. Every college that qualifies is shown, either as a full card or in an expandable list. If you didn't enter a score, or a college doesn't have reliable data, test scores don't affect that college. GPA is shown for context only.</li>
             <li>Your position and club league were not used to rank colleges, because our database has no roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
             <li>These results do not guarantee admission, scholarships, roster spots, or recruitment. Talk with college coaches and admissions offices.</li>
         </ul>

@@ -37,6 +37,7 @@ class QuestionnaireController extends Controller
             'options' => config('questionnaire'),
             'league' => SoccerLeague::from($answers['league']),
             'results' => $results,
+            'uncheckedCriteria' => CollegeMatcher::uncheckedCriteria($answers),
             'explanations' => $explainer->explain($answers, $results),
         ]);
     }

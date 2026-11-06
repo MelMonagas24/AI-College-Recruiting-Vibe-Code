@@ -184,19 +184,19 @@ class AcademicFitTest extends TestCase
 
                 $this->assertSame($without->matches->count(), $lowest->matches->count(), "{$division} / {$priority}");
                 $this->assertSame(
-                    $without->matches->concat($without->alsoFits)->count(),
-                    $lowest->matches->concat($lowest->alsoFits)->count(),
+                    $without->all()->count(),
+                    $lowest->all()->count(),
                     "{$division} / {$priority}: every qualifying college stays available",
                 );
             }
         }
     }
 
-    public function test_colleges_past_the_top_five_stay_available_under_also_fits(): void
+    public function test_colleges_past_the_first_five_stay_available_in_expandable_lists(): void
     {
         $this->seed(CollegeSeeder::class);
 
-        $allShown = fn ($results): array => $results->matches->concat($results->alsoFits)
+        $allShown = fn ($results): array => $results->all()
             ->map(fn (CollegeMatch $match): int => $match->college->ipeds_unit_id)
             ->sort()
             ->values()
@@ -212,7 +212,28 @@ class AcademicFitTest extends TestCase
             $this->assertContains($id, $allShown($sat1300), "{$name} meets this athlete's preferences and must stay available.");
         }
 
-        $sat1300->alsoFits->each(fn (CollegeMatch $match) => $this->assertGreaterThanOrEqual(CollegeMatcher::MINIMUM_SCORE, $match->preferenceScore));
+        $this->assertCount(3, $sat1300->moreStrongMatches(), 'Colleges past the first five are expandable Strong Matches, not demoted.');
+        $sat1300->all()->each(fn (CollegeMatch $match) => $this->assertTrue($match->isStrongMatch(), 'A test score must never move a college out of Strong Matches.'));
+    }
+
+    public function test_academic_fit_never_changes_which_category_a_college_is_in(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $category = fn ($results): array => $results->all()
+            ->mapWithKeys(fn (CollegeMatch $match): array => [$match->college->ipeds_unit_id => $match->isStrongMatch()])
+            ->sortKeys()
+            ->all();
+
+        foreach (['division_1', 'division_3', 'open'] as $division) {
+            $answers = ['division' => $division, 'major' => 'biology', 'budget' => '30k_45k', 'size' => 'large', 'priority' => 'academics'];
+            $without = app(CollegeMatcher::class)->match($this->fictionalAthlete($answers));
+            $low = app(CollegeMatcher::class)->match($this->fictionalAthlete([...$answers, 'test_taken' => 'sat', 'sat_score' => 400]));
+            $high = app(CollegeMatcher::class)->match($this->fictionalAthlete([...$answers, 'test_taken' => 'sat', 'sat_score' => 1600]));
+
+            $this->assertSame($category($without), $category($low), "{$division}: a low score must not change any category");
+            $this->assertSame($category($without), $category($high), "{$division}: a high score must not change any category");
+        }
     }
 
     public function test_gpa_never_changes_recommendations(): void

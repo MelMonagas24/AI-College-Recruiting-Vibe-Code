@@ -9,6 +9,14 @@ use Illuminate\Support\Collection;
 /**
  * Filters and ranks verified colleges against questionnaire answers.
  *
+ * Every college in the chosen division that is not known to lack the major is
+ * sorted into one of two categories. A Strong Match meets the athlete's major,
+ * size, and budget, each confirmed by verified data ("No preference" and "Unsure"
+ * are not checked, and a "$45,000+" budget has no upper limit, so the card shows
+ * the cost and says affordability is the family's decision). Every other college is an Other Option to Consider, and each
+ * missed or unconfirmed criterion is listed as a tradeoff. Campus setting and
+ * academic fit only change the order within a category.
+ *
  * Only facts stored in the database are used. Published costs are prices before
  * financial aid, so they are compared to the family's after-aid budget only to show
  * how much grants or scholarships would need to cover, never as the family's cost.
@@ -75,20 +83,62 @@ class CollegeMatcher
             ->filter(fn (?int $cost): bool => $cost !== null);
         $costRange = $knownCosts->isEmpty() ? null : [$knownCosts->min(), $knownCosts->max()];
 
-        $qualifying = $withMajor
+        $evaluated = $withMajor
             ->map(fn (College $college): CollegeMatch => $this->evaluate($college, $answers, $costRange))
-            ->filter(fn (CollegeMatch $match): bool => $match->preferenceScore >= self::MINIMUM_SCORE)
-            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [$b->score, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
-                <=> [$a->score, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
+            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => $this->compareScores($a, $b))
             ->values();
 
-        $ranked = $qualifying->take(self::MAXIMUM_RESULTS)->values();
+        $strongMatches = $evaluated->filter(fn (CollegeMatch $match): bool => $match->isStrongMatch())->values();
 
-        $shortfallReasons = $ranked->count() < self::MINIMUM_RESULTS
-            ? $this->explainShortfall($answers, $eligible->count(), $inDivision->count(), $withMajor->count(), $ranked->count())
+        $alternatives = $evaluated
+            ->reject(fn (CollegeMatch $match): bool => $match->isStrongMatch())
+            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => count($a->tradeoffs) <=> count($b->tradeoffs) ?: $this->compareScores($a, $b))
+            ->values();
+
+        $otherOptions = $alternatives->filter(fn (CollegeMatch $match): bool => $match->meetsMinimumScore())->values();
+
+        if ($strongMatches->isEmpty() && $otherOptions->count() < self::MINIMUM_RESULTS) {
+            $closestBelowMinimum = $alternatives
+                ->reject(fn (CollegeMatch $match): bool => $match->meetsMinimumScore())
+                ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [count($a->tradeoffs), $b->preferenceScore, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
+                    <=> [count($b->tradeoffs), $a->preferenceScore, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
+                ->take(self::MINIMUM_RESULTS - $otherOptions->count());
+
+            $otherOptions = $otherOptions->concat($closestBelowMinimum)->values();
+        }
+
+        $shown = $strongMatches->count() + $otherOptions->count();
+
+        $shortfallReasons = $shown < self::MINIMUM_RESULTS
+            ? $this->explainShortfall($answers, $eligible->count(), $inDivision->count(), $withMajor->count(), $shown)
             : [];
 
-        return new MatchResults($ranked, $shortfallReasons, $qualifying->slice(self::MAXIMUM_RESULTS)->values());
+        return new MatchResults($strongMatches, $otherOptions, $shortfallReasons);
+    }
+
+    /**
+     * Higher scores first, then lower published costs, then alphabetical.
+     */
+    private function compareScores(CollegeMatch $a, CollegeMatch $b): int
+    {
+        return [$b->score, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
+            <=> [$a->score, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name];
+    }
+
+    /**
+     * The key criteria a Strong Match is not checked against, because the athlete chose
+     * "Undecided" or "Other" for her major, "No preference" for size, or "Unsure" for budget.
+     *
+     * @param  array<string, mixed>  $answers
+     * @return list<string>
+     */
+    public static function uncheckedCriteria(array $answers): array
+    {
+        return array_keys(array_filter([
+            'major' => ! isset(self::MAJOR_COLUMNS[$answers['major']]),
+            'size' => $answers['size'] === 'no_preference',
+            'budget' => ! isset(self::BUDGET_RANGES[$answers['budget']]),
+        ]));
     }
 
     /**
@@ -134,6 +184,7 @@ class CollegeMatcher
         $matchedOn = [];
         $unknowns = [];
         $tradeoffs = [];
+        $notes = [];
 
         $matchedOn[] = 'NCAA Division '.$this->roman($college->ncaa_division).' women\'s soccer (verified for the '.$college->womens_soccer_verified_season.' season)';
 
@@ -147,24 +198,28 @@ class CollegeMatcher
                 $matchedOn[] = "Offers {$label} (federal degree data)";
             } else {
                 $earned += $weights['major'] * 0.5;
-                $unknowns[] = "We could not confirm whether it offers a bachelor's degree in {$label}.";
-                $tradeoffs[] = "Its {$label} program is not confirmed in our data; check the college's catalog.";
+                $tradeoffs[] = "We couldn't confirm that it offers a bachelor's degree in {$label}, so this match can't be confirmed. Check the college's course catalog.";
             }
         }
 
-        $affordability = Affordability::for($college, $answers['home_state'], self::BUDGET_RANGES[$answers['budget']] ?? null);
+        $budgetRange = self::BUDGET_RANGES[$answers['budget']] ?? null;
+        $affordability = Affordability::for($college, $answers['home_state'], $budgetRange);
+        $costYear = $college->cost_academic_year ?? '2026-27';
 
-        if ($affordability->status === AffordabilityStatus::CostUnknown) {
-            $unknowns[] = 'Its '.($college->cost_academic_year ?? '2026-27').' cost of attendance is not verified yet.';
-        }
-
-        if (isset(self::BUDGET_RANGES[$answers['budget']])) {
+        if ($budgetRange === null) {
+            $notes[] = $affordability->status === AffordabilityStatus::CostUnknown
+                ? "Affordability has not been checked or confirmed: you chose \"Unsure\" for your family's budget, and this college's {$costYear} cost of attendance is not verified yet."
+                : 'Affordability has not been checked: you chose "Unsure" for your family\'s budget, so this college\'s published cost ($'.number_format($affordability->cost).' per year, before aid) was not compared with a budget.';
+        } else {
             $possible += $weights['budget'];
             $earned += $weights['budget'] * $this->affordabilityCredit($affordability, $costRange);
 
-            if ($affordability->status === AffordabilityStatus::WithinBudget) {
-                $matchedOn[] = 'Published cost is within your family\'s budget range, even before aid';
-            }
+            match ($affordability->status) {
+                AffordabilityStatus::WithinBudget => $matchedOn[] = 'Published cost is within your family\'s budget range, even before aid',
+                AffordabilityStatus::MayExceedBudget => $notes[] = 'You chose an open-ended budget ($45,000+), so this college still counts for the budget check. Its published cost is $'.number_format($affordability->cost).' per year before aid. Your family will need to decide whether that is affordable.',
+                AffordabilityStatus::AboveBudget => $tradeoffs[] = $this->aboveBudgetTradeoff($college, $affordability, $answers['budget']),
+                default => $tradeoffs[] = "Its {$costYear} cost of attendance isn't verified, so we can't confirm it fits your family's budget.",
+            };
 
             $possible += $weights['merit'];
             $earned += $weights['merit'] * match ($college->merit_aid) {
@@ -174,31 +229,38 @@ class CollegeMatcher
             };
         }
 
-        foreach (['setting' => 'campus_environment', 'size' => 'size'] as $answer => $attribute) {
-            if ($answers[$answer] === 'no_preference') {
-                continue;
-            }
+        if ($answers['size'] !== 'no_preference') {
+            $possible += $weights['size'];
+            $wanted = strtolower(config("questionnaire.sizes.{$answers['size']}"));
+            $size = $college->size;
 
-            $possible += $weights[$answer];
-            $actual = $college->{$attribute};
-            $wanted = strtolower(config("questionnaire.{$answer}s.{$answers[$answer]}"));
-
-            if ($actual === null) {
-                $unknowns[] = $answer === 'size' ? 'Its undergraduate enrollment is not verified.' : 'Its campus setting is not verified.';
-            } elseif ($actual->value === $answers[$answer]) {
-                $earned += $weights[$answer];
-                $matchedOn[] = $answer === 'size'
-                    ? "{$actual->label()} college (".number_format($college->undergraduate_enrollment)." undergraduates, {$college->enrollment_term})"
-                    : "{$actual->label()} campus (federal location: {$college->federal_locale})";
+            if ($size === null) {
+                $tradeoffs[] = "Its undergraduate enrollment isn't verified, so we can't confirm it's a {$wanted} college.";
+            } elseif ($size->value === $answers['size']) {
+                $earned += $weights['size'];
+                $matchedOn[] = "{$size->label()} college (".number_format($college->undergraduate_enrollment)." undergraduates, {$college->enrollment_term})";
             } else {
-                $tradeoffs[] = $answer === 'size'
-                    ? "It is a {$actual->label()} college, not {$wanted}."
-                    : "Its campus is {$actual->label()}, not {$wanted}.";
+                $tradeoffs[] = "It's a {$size->label()} college (".number_format($college->undergraduate_enrollment)." undergraduates, {$college->enrollment_term}), not {$wanted}.";
+            }
+        }
+
+        if ($answers['setting'] !== 'no_preference') {
+            $possible += $weights['setting'];
+            $wanted = strtolower(config("questionnaire.settings.{$answers['setting']}"));
+            $setting = $college->campus_environment;
+
+            if ($setting === null) {
+                $unknowns[] = 'Its campus setting is not verified.';
+            } elseif ($setting->value === $answers['setting']) {
+                $earned += $weights['setting'];
+                $matchedOn[] = "{$setting->label()} campus (federal location: {$college->federal_locale})";
+            } else {
+                $notes[] = "Its campus is {$setting->label()}, not {$wanted}.";
             }
         }
 
         if ($college->ncaa_division === 3 && in_array($answers['priority'], ['affordability', 'soccer'], true)) {
-            $tradeoffs[] = 'Division III schools do not offer athletic scholarships; aid is academic or need-based.';
+            $notes[] = 'Division III schools do not offer athletic scholarships; aid is academic or need-based.';
         }
 
         $preferenceScore = $possible > 0 ? round($earned / $possible, 4) : 1.0;
@@ -221,10 +283,27 @@ class CollegeMatcher
             preferenceScore: $preferenceScore,
             matchedOn: $matchedOn,
             unknowns: $unknowns,
-            tradeoff: $tradeoffs[0] ?? null,
+            tradeoffs: $tradeoffs,
+            notes: $notes,
             affordability: $affordability,
             academicFit: $academicFit,
         );
+    }
+
+    /**
+     * Describe how far a published cost is above the budget, without treating it as the family's final cost.
+     */
+    private function aboveBudgetTradeoff(College $college, Affordability $affordability, string $budget): string
+    {
+        $rate = $affordability->rate ? " ({$affordability->rate} rate)" : '';
+        $tradeoff = 'Its published cost, $'.number_format($affordability->cost)." per year{$rate}, is $".number_format($affordability->gap)
+            .' above the top of your family\'s budget ('.config("questionnaire.budgets.{$budget}").'). Financial aid could close some or all of this gap; the college\'s Net Price Calculator can estimate it.';
+
+        return $tradeoff.match ($college->merit_aid) {
+            MeritAidAvailability::Available => ' This college offers merit scholarships.',
+            MeritAidAvailability::Limited => ' This college offers limited merit scholarships.',
+            default => '',
+        };
     }
 
     /**
@@ -295,11 +374,14 @@ class CollegeMatcher
             $reasons[] = "{$withMajor} of those offer {$major} or have not been confirmed either way.";
         }
 
-        $reasons[] = $shown === 0
-            ? 'None of them met enough of your other preferences (budget, campus environment, and size) to recommend.'
-            : "Only {$shown} met enough of your other preferences (budget, campus environment, and size) to recommend.";
+        if ($shown < $withMajor) {
+            $reasons[] = "Only {$shown} met enough of your other preferences (budget, campus environment, and size) to recommend.";
+            $reasons[] = 'Rather than suggest poor matches, we are showing only the colleges that fit.';
+        } elseif ($shown > 0) {
+            $reasons[] = $shown === 1 ? 'That college is shown below.' : "All {$shown} are shown below.";
+        }
 
-        $reasons[] = 'Rather than suggest poor matches, we are showing only the colleges that fit. Choosing "Open to multiple divisions" or "No preference" for some questions would widen the search.';
+        $reasons[] = 'Choosing "Open to multiple divisions" or "No preference" for some questions would widen the search.';
 
         return $reasons;
     }

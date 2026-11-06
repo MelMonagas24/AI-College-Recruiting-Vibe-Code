@@ -116,20 +116,121 @@ class RecommendationResultsTest extends TestCase
 
     public function test_fewer_matches_are_explained(): void
     {
-        $this->seed(CollegeSeeder::class);
+        College::factory()->create(['ncaa_division' => 2, 'cost_of_attendance_in_state' => 14000, 'cost_of_attendance_out_of_state' => 14000]);
+        College::factory()->count(3)->create(['ncaa_division' => 2, 'undergraduate_enrollment' => 30000, 'merit_aid' => 'not_offered']);
 
         $this->post(route('questionnaire.store'), $this->fictionalAthlete([
-            'division' => 'division_1',
-            'major' => 'nursing',
             'budget' => 'under_15k',
-            'setting' => 'rural',
-            'size' => 'small',
-            'priority' => 'balance',
+            'size' => 'medium',
+            'major' => 'business',
             'home_state' => 'OH',
         ]))
             ->assertOk()
-            ->assertSee("Why you're seeing fewer than 3 matches", false)
+            ->assertSee("Why you're seeing fewer than 3 colleges", false)
             ->assertSee('Rather than suggest poor matches');
+    }
+
+    public function test_the_new_jersey_athlete_sees_tcnj_as_a_strong_match_and_tradeoffs_for_others(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $response = $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'graduation_year' => 2028,
+            'division' => 'division_3',
+            'position' => 'defender',
+            'league' => 'ecnl_rl',
+            'gpa' => '3.70',
+            'test_taken' => 'none',
+            'act_score' => null,
+            'major' => 'education',
+            'budget' => '30k_45k',
+            'home_state' => 'NJ',
+            'size' => 'medium',
+        ]));
+
+        $response->assertOk()
+            ->assertSeeInOrder(['1 Strong Match', '2 Other Options to Consider', 'Strong Matches', 'The College of New Jersey', 'Other Options to Consider', 'Montclair State University', 'University of Scranton'])
+            ->assertSee('These colleges meet your division, major, size, and budget, based on our verified data.')
+            ->assertSee('<span class="pill strong">Strong Match</span>', false)
+            ->assertSee('$44,640 per year (in-state rate)')
+            ->assertSee("It's a Large college (18,712 undergraduates, Fall 2024), not medium.")
+            ->assertSee('<span class="pill tradeoff">2 tradeoffs</span>', false)
+            ->assertSee('Tradeoffs to consider')
+            ->assertSee('Financial aid could close some or all of this gap')
+            ->assertDontSee('No Strong Matches');
+    }
+
+    public function test_with_no_strong_matches_the_page_says_so_and_never_calls_alternatives_perfect(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_3',
+            'test_taken' => 'none',
+            'act_score' => null,
+            'major' => 'education',
+            'budget' => '30k_45k',
+            'home_state' => 'PA',
+            'size' => 'medium',
+        ]))
+            ->assertOk()
+            ->assertSee('0 Strong Matches')
+            ->assertSee('No Strong Matches')
+            ->assertSee('No college in our database meets all of your key criteria (division, major, size, and budget).', false)
+            ->assertSee("please don't read any of them as a perfect fit", false)
+            ->assertSeeInOrder(['Other Options to Consider', 'The College of New Jersey', 'is $6,174 above the top of your family']);
+    }
+
+    public function test_closest_alternatives_below_the_minimum_score_are_labeled(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'major' => 'nursing',
+            'budget' => '15k_30k',
+            'home_state' => 'OH',
+            'size' => 'small',
+        ]))
+            ->assertOk()
+            ->assertSee('No Strong Matches')
+            ->assertSee('This college meets fewer than half of your preferences. It is shown so you have at least three alternatives to compare.');
+    }
+
+    public function test_the_page_says_which_criteria_were_not_checked(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete(['major' => 'undecided', 'budget' => 'unsure']))
+            ->assertOk()
+            ->assertSee('You chose &quot;Undecided&quot; for your major and &quot;No preference&quot; for size and &quot;Unsure&quot; for budget', false)
+            ->assertSee('More colleges can be Strong Matches as a result.')
+            ->assertSee('Affordability has not been checked or confirmed</strong>, because you chose "Unsure"', false)
+            ->assertSee('<span class="pill unchecked">Budget not checked</span>', false)
+            ->assertSee('Affordability not checked')
+            ->assertDontSee('These colleges meet your division, major, size, and budget');
+    }
+
+    public function test_an_open_ended_budget_shows_the_cost_without_calling_it_within_budget(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_3',
+            'test_taken' => 'none',
+            'act_score' => null,
+            'major' => 'education',
+            'budget' => '45k_plus',
+            'home_state' => 'NJ',
+            'size' => 'small',
+        ]))
+            ->assertOk()
+            ->assertSee('University of Scranton')
+            ->assertSee('<span class="pill unchecked">Open-ended budget</span>', false)
+            ->assertSee('Open-ended budget: check this cost')
+            ->assertSee('$75,710 per year. You chose $45,000+, an open-ended budget with no upper limit')
+            ->assertSee("That doesn't mean every cost is affordable", false)
+            ->assertDontSee('Published cost may be above')
+            ->assertDontSee('These colleges meet your division, major, size, and budget');
     }
 
     public function test_results_never_promise_outcomes_and_keep_the_demo_notice(): void
@@ -305,12 +406,12 @@ class RecommendationResultsTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertSee('Also fits your preferences')
-            ->assertSee('They are valid options, listed here only because we show five top matches at a time.')
+            ->assertSee('More strong matches (3)')
+            ->assertSee('They are listed here only because we show five full cards at a time.')
             ->assertSee('a score below a college', false)
             ->assertSee('is not a reason to skip it', false)
             ->assertSee('<details class="card match also">', false)
-            ->assertSee('Personalized AI explanations are written for your top matches only.')
+            ->assertSee('Personalized AI explanations are written for the first five colleges on this page only.')
             ->assertSee('Georgetown University')
             ->assertSee('University of Maryland-College Park')
             ->assertSee('University of North Carolina at Chapel Hill')
@@ -319,7 +420,7 @@ class RecommendationResultsTest extends TestCase
         $this->assertSame(8, substr_count($response->getContent(), 'class="academic"'), 'All 8 Division I colleges show their academic context.');
     }
 
-    public function test_the_also_fits_section_is_hidden_when_five_or_fewer_colleges_qualify(): void
+    public function test_expandable_lists_are_hidden_when_every_college_fits_on_a_full_card(): void
     {
         $this->seed(CollegeSeeder::class);
 
@@ -333,8 +434,26 @@ class RecommendationResultsTest extends TestCase
             'home_state' => 'OH',
         ]))
             ->assertOk()
-            ->assertDontSee('id="also-fits-heading"', false)
+            ->assertDontSee('id="more-strong-heading"', false)
+            ->assertDontSee('id="more-other-heading"', false)
             ->assertDontSee('<details class="card match also">', false);
+    }
+
+    public function test_other_options_past_the_first_cards_are_expandable(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_1',
+            'major' => 'biology',
+            'budget' => '15k_30k',
+            'home_state' => 'NC',
+            'size' => 'large',
+            'priority' => 'balance',
+        ]))
+            ->assertOk()
+            ->assertSeeInOrder(['University of North Carolina at Chapel Hill', 'Other Options to Consider', 'More options to consider (3)', 'University of Colorado Boulder'])
+            ->assertSee("Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget.");
     }
 
     public function test_submitting_answers_saves_nothing(): void

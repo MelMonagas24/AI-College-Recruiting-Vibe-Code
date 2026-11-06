@@ -205,4 +205,72 @@ class ClaudeRecommendationExplainerTest extends TestCase
         $this->assertCount($results->matches->count(), $decoded['colleges']);
         $this->assertSame($results->matches->pluck('college.name')->all(), array_column($decoded['colleges'], 'name'));
     }
+
+    public function test_the_request_sends_each_category_and_every_tradeoff(): void
+    {
+        $answers = [...$this->answers, 'major' => 'education', 'home_state' => 'NJ', 'size' => 'medium', 'priority' => 'affordability'];
+        $this->seed(CollegeSeeder::class);
+        $results = app(CollegeMatcher::class)->match($answers);
+
+        $colleges = collect(json_decode($this->explainer()->buildRequest($answers, $results), true)['colleges'])->keyBy('name');
+
+        $this->assertSame('Strong Match', $colleges['The College of New Jersey']['category']);
+        $this->assertSame([], $colleges['The College of New Jersey']['tradeoffs']);
+        $this->assertSame('Other Option to Consider', $colleges['University of Scranton']['category']);
+        $this->assertCount(2, $colleges['University of Scranton']['tradeoffs']);
+        $this->assertContains('Division III schools do not offer athletic scholarships; aid is academic or need-based.', $colleges['University of Scranton']['other_things_to_consider']);
+    }
+
+    public function test_it_rejects_an_other_option_described_as_a_perfect_fit(): void
+    {
+        $answers = [...$this->answers, 'major' => 'education', 'home_state' => 'NJ', 'size' => 'medium', 'priority' => 'affordability'];
+        $this->seed(CollegeSeeder::class);
+        $results = app(CollegeMatcher::class)->match($answers);
+        $strong = $results->strongMatches->first()->college->id;
+        $other = $results->otherOptions->first()->college->id;
+
+        foreach (['It is a perfect fit for you.', 'Montclair is an ideal match.', 'It meets all of your preferences.', 'This one checks every box.'] as $overstated) {
+            $texts = $this->validTexts($results);
+            $texts[$other] = $overstated;
+
+            try {
+                $this->explainer()->validateResponse($this->response($texts), $results);
+                $this->fail("Accepted an overstated Other Option: {$overstated}");
+            } catch (InvalidExplanationException $e) {
+                $this->assertStringContainsString('called an Other Option a full fit', $e->getMessage());
+            }
+        }
+
+        $texts = $this->validTexts($results);
+        $texts[$strong] = 'TCNJ is a strong fit: it offers Education and is within your budget.';
+
+        $this->assertCount($results->matches->count(), $this->explainer()->validateResponse($this->response($texts), $results));
+    }
+
+    public function test_it_rejects_budget_claims_when_the_budget_was_unsure_or_open_ended(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        foreach (['unsure', '45k_plus'] as $budget) {
+            $answers = [...$this->answers, 'major' => 'education', 'home_state' => 'NJ', 'size' => 'small', 'budget' => $budget];
+            $results = app(CollegeMatcher::class)->match($answers);
+            $scranton = $results->matches->first(fn ($match): bool => $match->college->short_name === 'Scranton');
+            $this->assertNotNull($scranton);
+
+            foreach (['It is within your budget.', 'Scranton fits your family\'s budget.', 'This college is affordable.'] as $claim) {
+                $texts = $this->validTexts($results);
+                $texts[$scranton->college->id] = $claim;
+
+                try {
+                    $this->explainer()->validateResponse($this->response($texts), $results);
+                    $this->fail("Accepted an unconfirmed budget claim ({$budget}): {$claim}");
+                } catch (InvalidExplanationException $e) {
+                    $this->assertStringContainsString('claimed an unconfirmed budget fit', $e->getMessage());
+                }
+            }
+
+            $request = collect(json_decode($this->explainer()->buildRequest($answers, $results), true)['colleges'])->keyBy('name');
+            $this->assertStringStartsWith('not ', $request['University of Scranton']['published_cost_of_attendance_before_aid']['compared_with_family_budget']);
+        }
+    }
 }

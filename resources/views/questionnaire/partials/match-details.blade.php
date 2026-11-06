@@ -1,21 +1,39 @@
 @php
     $college = $match->college;
-    $explanation = $isTopMatch ? $explanations->for($college->id) : null;
+    $isExplained = $results->isExplained($match);
+    $explanation = $isExplained ? $explanations->for($college->id) : null;
     $costSource = $college->sources->firstWhere('topic', 'costs');
     $athleticsSource = $college->sources->firstWhere('topic', 'athletics');
 @endphp
 
 <section class="why">
-    <h3>Why it fits</h3>
+    <h3>{{ $match->isStrongMatch() ? 'Why it fits' : 'How it compares' }}</h3>
     @if ($explanation !== null)
         <p><span class="badge ai">AI-generated</span> {{ $explanation }}</p>
         <p class="fine">Written by Claude using only the verified facts below. Double-check anything important with the college.</p>
-    @elseif ($isTopMatch)
+    @elseif ($isExplained)
         <p><span class="badge off">Personalized explanation unavailable</span></p>
     @else
-        <p>This college meets your preferences. The verified facts below show how it fits. Personalized AI explanations are written for your top matches only.</p>
+        <p>
+            {{ $match->isStrongMatch() ? 'This college meets all of your key criteria. The verified facts below show how it fits.' : 'The tradeoffs and verified facts below show how this college compares with what you are looking for.' }}
+            Personalized AI explanations are written for the first five colleges on this page only.
+        </p>
     @endif
 </section>
+
+@if (! $match->isStrongMatch())
+    <section class="tradeoffs" aria-label="Tradeoffs">
+        <h3>{{ count($match->tradeoffs) === 1 ? 'Tradeoff to consider' : 'Tradeoffs to consider' }}</h3>
+        <ul>
+            @foreach ($match->tradeoffs as $tradeoff)
+                <li>{{ $tradeoff }}</li>
+            @endforeach
+        </ul>
+        @if (! $match->meetsMinimumScore())
+            <p class="fine">This college meets fewer than half of your preferences. It is shown so you have at least three alternatives to compare.</p>
+        @endif
+    </section>
+@endif
 
 @include('questionnaire.partials.affordability', ['affordability' => $match->affordability])
 
@@ -32,10 +50,14 @@
     </section>
 @endif
 
-@if ($match->tradeoff)
+@if ($match->notes !== [])
     <section>
-        <h3>Tradeoff to consider</h3>
-        <p>{{ $match->tradeoff }}</p>
+        <h3>Also note</h3>
+        <ul>
+            @foreach ($match->notes as $note)
+                <li>{{ $note }}</li>
+            @endforeach
+        </ul>
     </section>
 @endif
 

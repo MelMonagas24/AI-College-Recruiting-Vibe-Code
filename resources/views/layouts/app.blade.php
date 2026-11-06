@@ -155,10 +155,22 @@
         .academic p { margin: 0; }
         .academic .fit { font-weight: 600; }
         .academic .fine { display: block; margin-top: 2px; }
-        .also-fits { margin: 28px 0 16px; }
-        .also-fits > h2 { color: #3b2a8f; font-size: 1.35rem; margin-bottom: 6px; }
-        .also-fits > p { margin-bottom: 8px; }
-        .also-fits > .fine { margin-bottom: 14px; }
+        .summary { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; font-weight: 700; }
+        .summary a { color: #3b2a8f; }
+        .summary-note { margin-bottom: 16px; }
+        .category { margin: 28px 0 16px; }
+        .category > h2 { color: #3b2a8f; font-size: 1.35rem; margin-bottom: 6px; }
+        .category > p { margin-bottom: 14px; }
+        .notice p { margin-top: 4px; }
+        .more { margin-top: 20px; }
+        .more > h3 { color: #3b2a8f; font-size: 1.1rem; margin-bottom: 4px; }
+        .more > .fine { margin-bottom: 12px; }
+        .pill.strong { background: #dcfce7; color: #166534; }
+        .pill.tradeoff { background: #ffedd5; color: #9a3412; }
+        .pill.unchecked { background: #f3f4f6; color: #374151; border: 1px dashed #9ca3af; }
+        .tradeoffs { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #f5b48a; background: #fff4ed; display: grid; gap: 6px; }
+        .tradeoffs h3 { margin: 0; color: #9a3412; }
+        .tradeoffs ul { margin: 0 0 0 20px; }
         details.also { padding: 0; border-color: #ddd6fe; }
         details.also > summary { cursor: pointer; padding: 16px 20px; display: grid; gap: 6px; list-style: none; }
         details.also > summary::-webkit-details-marker { display: none; }

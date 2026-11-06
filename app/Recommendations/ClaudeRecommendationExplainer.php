@@ -35,6 +35,28 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         '/\b(reach|safety|target)\s+(school|college)s?\b/i',
     ];
 
+    private const STRONG_MATCH = 'Strong Match';
+
+    private const OTHER_OPTION = 'Other Option to Consider';
+
+    /**
+     * Phrases that claim a cost fits the family's budget.
+     */
+    private const BUDGET_FIT_PATTERNS = [
+        '/\b(within|under|inside)\s+(your\s+)?(family\'?s?\s+)?budget\b/i',
+        '/\bfits?\s+(within\s+)?(your\s+)?(family\'?s?\s+)?budget\b/i',
+        '/\b(is|are|very|quite)\s+affordable\b/i',
+    ];
+
+    /**
+     * Phrases that would present a college with tradeoffs as a complete fit.
+     */
+    private const OVERSTATED_FIT_PATTERNS = [
+        '/\b(perfect|ideal|strong|great|excellent|top)\s+(fit|match|choice)\b/i',
+        '/\bchecks\s+(all|every)\b/i',
+        '/\b(meets|fits|matches)\s+(all|every)\s+(of\s+)?your\b/i',
+    ];
+
     private const SYSTEM_PROMPT = <<<'PROMPT'
         You help a high school women's soccer player understand college recommendations in a demo app that uses fictional athlete profiles.
 
@@ -48,6 +70,8 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         - Do not mention any dollar amount that is not in the provided facts.
         - Do not predict or promise admission, scholarships, roster spots, playing time, or recruitment. A club league does not determine which NCAA division a player can compete in.
         - Never discuss admission chances or label a college a reach, match, target, or safety. Do not use the words "chances", "odds", or "guarantee". If the athlete's test score is below the middle 50%, do not discourage her: colleges admit students below that range and consider much more than test scores.
+        - Never say a cost is within or fits the budget, or call it affordable, unless compared_with_family_budget is "within budget". If the budget was "not checked", say affordability has not been checked. If it was "not compared" for an open-ended budget, state the published cost and say the family decides whether it is affordable.
+        - Each college has a category. A "Strong Match" meets the athlete's division, major, size, and budget (a budget the athlete left as "Unsure" was not checked). An "Other Option to Consider" has tradeoffs: name its most important tradeoff honestly, and never call it a perfect, ideal, strong, or great fit or say it meets all of her preferences.
         - Write directly to the athlete ("you"), in plain language a high school student understands.
         PROMPT;
 
@@ -148,7 +172,9 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             'athlete_test_score_compared_with_first_year_students' => $this->academicFitFact($match->academicFit),
             'matched_preferences' => $match->matchedOn,
             'unknown_facts' => $match->unknowns,
-            'tradeoff' => $match->tradeoff,
+            'category' => $match->isStrongMatch() ? self::STRONG_MATCH : self::OTHER_OPTION,
+            'tradeoffs' => $match->tradeoffs,
+            'other_things_to_consider' => $match->notes,
         ])->values()->all();
 
         return json_encode(['athlete_preferences' => $preferences, 'colleges' => $colleges], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
@@ -188,6 +214,8 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             $this->assertNoOtherColleges($text, $matchesById->get($id)->college);
             $this->assertOnlyKnownAmounts($text, $matchesById->get($id));
             $this->assertNoAdmissionPredictions($text);
+            $this->assertTradeoffsAreNotHidden($text, $matchesById->get($id));
+            $this->assertNoUnverifiedBudgetFit($text, $matchesById->get($id));
 
             $explanations[$id] = $text;
         }
@@ -238,7 +266,13 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             'academic_year' => $college->cost_academic_year ?? 'unknown',
             'applies_to_this_athlete' => $format($affordability->cost),
             'rate_used' => $affordability->rate ?? 'same price for all students',
-            'compared_with_family_budget' => str_replace('_', ' ', $affordability->status->value),
+            'compared_with_family_budget' => match ($affordability->status) {
+                AffordabilityStatus::WithinBudget => 'within budget',
+                AffordabilityStatus::AboveBudget => 'above budget',
+                AffordabilityStatus::MayExceedBudget => 'not compared: the family chose an open-ended $45,000+ budget, so the family decides whether this cost is affordable',
+                AffordabilityStatus::NoBudget => 'not checked: the family chose "Unsure" for budget',
+                AffordabilityStatus::CostUnknown => 'unknown: cost not verified',
+            },
             'amount_above_budget' => $format($affordability->gap),
             'includes_books_travel_personal' => match ($college->cost_of_attendance_is_complete) {
                 true => 'yes',
@@ -299,6 +333,38 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         foreach (self::ADMISSION_PREDICTION_PATTERNS as $pattern) {
             if (preg_match($pattern, $text, $found) === 1) {
                 throw new InvalidExplanationException("The AI response predicted admission (\"{$found[0]}\").");
+            }
+        }
+    }
+
+    /**
+     * Reject text that calls an Other Option a complete fit. Strong Matches may be described that way.
+     */
+    private function assertTradeoffsAreNotHidden(string $text, CollegeMatch $match): void
+    {
+        if ($match->isStrongMatch()) {
+            return;
+        }
+
+        foreach (self::OVERSTATED_FIT_PATTERNS as $pattern) {
+            if (preg_match($pattern, $text, $found) === 1) {
+                throw new InvalidExplanationException("The AI response called an Other Option a full fit (\"{$found[0]}\").");
+            }
+        }
+    }
+
+    /**
+     * Reject text that says a cost fits the budget unless the published cost is verified to be within it.
+     */
+    private function assertNoUnverifiedBudgetFit(string $text, CollegeMatch $match): void
+    {
+        if ($match->affordability->status === AffordabilityStatus::WithinBudget) {
+            return;
+        }
+
+        foreach (self::BUDGET_FIT_PATTERNS as $pattern) {
+            if (preg_match($pattern, $text, $found) === 1) {
+                throw new InvalidExplanationException("The AI response claimed an unconfirmed budget fit (\"{$found[0]}\").");
             }
         }
     }
