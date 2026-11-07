@@ -166,7 +166,7 @@ class RecommendationResultsTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertSeeInOrder(['1 Strong Match', '2 Other Options to Consider', 'Strong Matches', 'The College of New Jersey', 'Other Options to Consider', 'Montclair State University', 'University of Scranton'])
+            ->assertSeeInOrder(['1 Strong Match', '6 Other Options to Consider', '(5 potentially affordable after aid)', 'Strong Matches', 'The College of New Jersey', 'Other Options to Consider', 'Montclair State University', 'Washington University in St Louis', 'University of Scranton'])
             ->assertSee('These colleges meet your division, major, size, and budget, based on our verified data.')
             ->assertSee('<span class="pill strong">Strong Match</span>', false)
             ->assertSee('$44,640 per year (in-state rate)')

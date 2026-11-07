@@ -45,6 +45,7 @@ class CollegeFactory extends Factory
             'cost_of_attendance_in_state' => 60000,
             'cost_of_attendance_out_of_state' => 60000,
             'cost_of_attendance_is_complete' => true,
+            'is_public' => false,
             'merit_aid' => MeritAidAvailability::Available,
             'verification_status' => VerificationStatus::Verified,
             'last_verified_on' => '2026-10-26',
@@ -60,6 +61,32 @@ class CollegeFactory extends Factory
             'has_active_womens_soccer' => false,
             'womens_soccer_verified_season' => null,
             'verification_status' => VerificationStatus::Unverified,
+        ]);
+    }
+
+    /**
+     * A college with a federal average net price for 2024-25 first-year students who received federal aid.
+     */
+    public function withAverageNetPrice(int $averageNetPrice, ?int $highIncome = null): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'average_net_price' => $averageNetPrice,
+            'average_net_price_year' => '2024-25',
+            'average_net_price_students' => 500,
+            'average_net_price_high_income' => $highIncome,
+        ]);
+    }
+
+    /**
+     * A public college in the given state, with different in-state and out-of-state published costs.
+     */
+    public function publicIn(string $state, int $inStateCost, int $outOfStateCost): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'is_public' => true,
+            'state' => $state,
+            'cost_of_attendance_in_state' => $inStateCost,
+            'cost_of_attendance_out_of_state' => $outOfStateCost,
         ]);
     }
 

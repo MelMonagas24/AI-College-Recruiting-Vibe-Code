@@ -37,6 +37,11 @@ class CollegeMatcher
     public const MINIMUM_SCORE = 0.5;
 
     /**
+     * The least budget credit for a college whose applicable federal average net price is within budget.
+     */
+    public const POTENTIALLY_AFFORDABLE_CREDIT = 0.75;
+
+    /**
      * The bottom and top of each budget range, in dollars per year. A null top means no upper limit.
      *
      * @var array<string, array{0: int, 1: int|null}>
@@ -92,7 +97,7 @@ class CollegeMatcher
 
         $alternatives = $evaluated
             ->reject(fn (CollegeMatch $match): bool => $match->isStrongMatch())
-            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => count($a->tradeoffs) <=> count($b->tradeoffs) ?: $this->compareScores($a, $b))
+            ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => $this->compareAlternatives($a, $b) ?: $this->compareScores($a, $b))
             ->values();
 
         $otherOptions = $alternatives->filter(fn (CollegeMatch $match): bool => $match->meetsMinimumScore())->values();
@@ -100,8 +105,9 @@ class CollegeMatcher
         if ($strongMatches->isEmpty() && $otherOptions->count() < self::MINIMUM_RESULTS) {
             $closestBelowMinimum = $alternatives
                 ->reject(fn (CollegeMatch $match): bool => $match->meetsMinimumScore())
-                ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => [count($a->tradeoffs), $b->preferenceScore, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
-                    <=> [count($b->tradeoffs), $a->preferenceScore, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
+                ->sort(fn (CollegeMatch $a, CollegeMatch $b): int => $this->compareAlternatives($a, $b)
+                    ?: [$b->preferenceScore, $a->affordability->cost ?? PHP_INT_MAX, $a->college->name]
+                    <=> [$a->preferenceScore, $b->affordability->cost ?? PHP_INT_MAX, $b->college->name])
                 ->take(self::MINIMUM_RESULTS - $otherOptions->count());
 
             $otherOptions = $otherOptions->concat($closestBelowMinimum)->values();
@@ -114,6 +120,28 @@ class CollegeMatcher
             : [];
 
         return new MatchResults($strongMatches, $otherOptions, $shortfallReasons);
+    }
+
+    /**
+     * Other Options with fewer tradeoffs come first. Among those with the same number,
+     * colleges whose budget is confirmed by published cost come first, then colleges
+     * that are potentially affordable after aid, then the rest.
+     */
+    private function compareAlternatives(CollegeMatch $a, CollegeMatch $b): int
+    {
+        return [count($a->tradeoffs), $this->budgetCertainty($a)] <=> [count($b->tradeoffs), $this->budgetCertainty($b)];
+    }
+
+    /**
+     * 0 when the budget is not a tradeoff, 1 when potentially affordable after aid, 2 otherwise.
+     */
+    private function budgetCertainty(CollegeMatch $match): int
+    {
+        return match (true) {
+            ! isset($match->tradeoffs['budget']) => 0,
+            $match->affordability->isPotentiallyAffordable() => 1,
+            default => 2,
+        };
     }
 
     /**
@@ -220,6 +248,10 @@ class CollegeMatcher
                 AffordabilityStatus::AboveBudget => $tradeoffs['budget'] = $this->aboveBudgetTradeoff($college, $affordability, $answers['budget']),
                 default => $tradeoffs['budget'] = "Its {$costYear} cost of attendance isn't verified, so we can't confirm it fits your family's budget.",
             };
+
+            if ($affordability->isPotentiallyAffordable()) {
+                $tradeoffs['budget'] .= " Its {$college->average_net_price_year} federal average net price is within your budget, so it may be worth exploring after aid. See the cost details.";
+            }
 
             $possible += $weights['merit'];
             $earned += $weights['merit'] * match ($college->merit_aid) {
@@ -331,9 +363,24 @@ class CollegeMatcher
      * exceed the budget, so the cheapest candidate earns the most credit instead of
      * every college being ruled out.
      *
+     * A college that is potentially affordable after aid earns at least
+     * POTENTIALLY_AFFORDABLE_CREDIT. This raises its rank among Other Options, but it
+     * still has to meet enough of the athlete's other preferences to be shown, and its
+     * published cost stays a tradeoff, so it can never become a Strong Match.
+     *
      * @param  array{0: int, 1: int}|null  $costRange
      */
     private function affordabilityCredit(Affordability $affordability, ?array $costRange): float
+    {
+        $credit = $this->publishedCostCredit($affordability, $costRange);
+
+        return $affordability->isPotentiallyAffordable() ? max($credit, self::POTENTIALLY_AFFORDABLE_CREDIT) : $credit;
+    }
+
+    /**
+     * @param  array{0: int, 1: int}|null  $costRange
+     */
+    private function publishedCostCredit(Affordability $affordability, ?array $costRange): float
     {
         if ($affordability->status === AffordabilityStatus::WithinBudget) {
             return 1.0;

@@ -112,6 +112,14 @@ final readonly class MatchResults
     }
 
     /**
+     * How many Other Options are potentially affordable after aid, based on an applicable federal average net price.
+     */
+    public function potentiallyAffordableCount(): int
+    {
+        return $this->otherOptions->filter(fn (CollegeMatch $match): bool => $match->affordability->isPotentiallyAffordable())->count();
+    }
+
+    /**
      * How many shown colleges have a cost we could not verify.
      */
     public function unknownCostCount(): int

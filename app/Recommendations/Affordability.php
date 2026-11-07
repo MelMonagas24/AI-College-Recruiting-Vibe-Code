@@ -7,8 +7,10 @@ use App\Models\College;
 /**
  * A college's published cost for this athlete compared with her family's budget.
  *
- * Only verified published costs are used. These are prices before financial aid,
- * so nothing here estimates scholarships or what a family will actually pay.
+ * Only verified published costs can confirm a budget match. These are prices before
+ * financial aid, so nothing here estimates scholarships or what a family will
+ * actually pay. A federal average net price is used only as a hint that a college
+ * may be worth exploring after aid, and only when it applies to the athlete.
  */
 final readonly class Affordability
 {
@@ -18,6 +20,8 @@ final readonly class Affordability
      * @param  int|null  $budgetMinimum  Bottom of the family's budget range.
      * @param  int|null  $budgetMaximum  Top of the family's budget range; null when there is no upper limit.
      * @param  int|null  $gap  How far the cost is above the top of the budget.
+     * @param  NetPriceComparison  $netPrice  Whether the federal average net price applies to this athlete.
+     * @param  CostLabel  $label  The affordability label shown on the card.
      */
     public function __construct(
         public AffordabilityStatus $status,
@@ -27,6 +31,8 @@ final readonly class Affordability
         public ?int $budgetMaximum,
         public ?int $gap,
         public ?bool $costIsComplete,
+        public NetPriceComparison $netPrice,
+        public CostLabel $label,
     ) {}
 
     /**
@@ -45,6 +51,8 @@ final readonly class Affordability
             default => AffordabilityStatus::AboveBudget,
         };
 
+        $netPrice = NetPriceComparison::for($college, $homeState);
+
         return new self(
             status: $status,
             cost: $cost,
@@ -53,7 +61,28 @@ final readonly class Affordability
             budgetMaximum: $maximum,
             gap: $status === AffordabilityStatus::AboveBudget ? $cost - $maximum : null,
             costIsComplete: $college->cost_of_attendance_is_complete,
+            netPrice: $netPrice,
+            label: self::label($status, $netPrice, $college->average_net_price, $budgetRange === null, $maximum),
         );
+    }
+
+    /**
+     * Only the verified published cost can confirm a budget match. A federal average
+     * net price that applies to this athlete can only mark a college as potentially
+     * affordable after aid, and only when the budget has an upper limit to compare with.
+     */
+    private static function label(AffordabilityStatus $status, NetPriceComparison $netPrice, ?int $averageNetPrice, bool $isUnsure, ?int $maximum): CostLabel
+    {
+        return match (true) {
+            $isUnsure => CostLabel::NotCompared,
+            $status === AffordabilityStatus::WithinBudget => CostLabel::WithinBudget,
+            $status === AffordabilityStatus::MayExceedBudget => CostLabel::NotCompared,
+            $netPrice !== NetPriceComparison::Applies || $maximum === null => $status === AffordabilityStatus::AboveBudget && $netPrice === NetPriceComparison::Unavailable
+                ? CostLabel::AboveBudget
+                : CostLabel::CannotCompare,
+            $averageNetPrice <= $maximum => CostLabel::PotentiallyAffordable,
+            default => CostLabel::AboveBudget,
+        };
     }
 
     /**
@@ -76,5 +105,10 @@ final readonly class Affordability
     public function isAboveBudget(): bool
     {
         return $this->status === AffordabilityStatus::AboveBudget;
+    }
+
+    public function isPotentiallyAffordable(): bool
+    {
+        return $this->label === CostLabel::PotentiallyAffordable;
     }
 }

@@ -91,6 +91,12 @@ class CollegeSeeder extends Seeder
             'cost_of_attendance_in_state' => $money,
             'cost_of_attendance_out_of_state' => $money,
             'cost_of_attendance_is_complete' => ['nullable', 'boolean'],
+            'is_public' => ['present', 'nullable', 'boolean'],
+            'average_net_price' => [...$money, 'required_with:average_net_price_year'],
+            'average_net_price_year' => ['nullable', 'string', 'regex:/^\d{4}-\d{2}$/', 'required_with:average_net_price'],
+            'average_net_price_students' => ['nullable', 'integer', 'min:1', 'required_with:average_net_price'],
+            'average_net_price_high_income' => $money,
+            'net_price_calculator_url' => ['nullable', 'url:https'],
             'merit_aid' => ['required', Rule::enum(MeritAidAvailability::class)],
             'admissions_data_source' => ['present', 'nullable', Rule::in([College::COMMON_DATA_SET, College::COLLEGE_SCORECARD])],
             'admissions_term' => ['nullable', 'string', 'regex:/^Fall \d{4}$/', 'required_with:admissions_data_source'],
@@ -129,6 +135,10 @@ class CollegeSeeder extends Seeder
 
         if ($hasCosts && ($record['cost_academic_year'] === null || ! in_array('costs', $topics, true))) {
             throw new \InvalidArgumentException("{$record['name']} has costs without an academic year and a 'costs' source.");
+        }
+
+        if ($record['average_net_price'] !== null && ($record['is_public'] === null || ! in_array('net_price', $topics, true))) {
+            throw new \InvalidArgumentException("{$record['name']} has an average net price without public/private status and a 'net_price' source.");
         }
 
         if ($record['admissions_data_source'] !== null && ! in_array('admissions', $topics, true)) {

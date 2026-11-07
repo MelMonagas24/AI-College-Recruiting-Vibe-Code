@@ -7,6 +7,7 @@ use App\Recommendations\Affordability;
 use App\Recommendations\AffordabilityStatus;
 use App\Recommendations\CollegeMatch;
 use App\Recommendations\CollegeMatcher;
+use App\Recommendations\CostLabel;
 use Database\Seeders\CollegeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -125,16 +126,16 @@ class CollegeMatcherTest extends TestCase
 
     public function test_affordability_ranks_lower_published_costs_first(): void
     {
-        $this->seed(CollegeSeeder::class);
+        foreach ([60000, 30000, 45000] as $cost) {
+            College::factory()->create(['name' => "Fictional {$cost} College", 'cost_of_attendance_in_state' => $cost, 'cost_of_attendance_out_of_state' => $cost]);
+        }
 
         $results = $this->matcher()->match($this->fictionalAthlete([
             'budget' => 'under_15k',
             'priority' => 'affordability',
         ]));
 
-        $costs = $results->matches->map(fn (CollegeMatch $match): ?int => $match->affordability->cost)->filter();
-        $this->assertNotEmpty($costs);
-        $this->assertSame($costs->min(), $results->matches->first()->affordability->cost);
+        $this->assertSame(30000, $results->matches->first()->affordability->cost);
         $this->assertTrue($results->matches->first()->affordability->isAboveBudget());
     }
 
@@ -281,10 +282,12 @@ class CollegeMatcherTest extends TestCase
         $this->assertSame('in-state', $tcnj->affordability->rate);
         $this->assertSame([], $tcnj->tradeoffs);
 
-        $this->assertSame(['Montclair State', 'Scranton'], $results->otherOptions->pluck('college.short_name')->all());
+        $this->assertSame('Montclair State', $results->otherOptions[0]->college->short_name, 'Its published cost is confirmed within budget, so it comes first.');
         $this->assertSame(['size' => 'It\'s a Large college (18,712 undergraduates, Fall 2024), not medium.'], $results->otherOptions[0]->tradeoffs);
-        $this->assertCount(2, $results->otherOptions[1]->tradeoffs, 'Scranton is above budget and small, and both tradeoffs are listed.');
-        $this->assertStringContainsString('is $30,710 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap', $results->otherOptions[1]->tradeoffs['budget']);
+
+        $scranton = $results->otherOptions->first(fn (CollegeMatch $match): bool => $match->college->short_name === 'Scranton');
+        $this->assertCount(2, $scranton->tradeoffs, 'Scranton is above budget and small, and both tradeoffs are listed.');
+        $this->assertStringContainsString('is $30,710 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap', $scranton->tradeoffs['budget']);
     }
 
     public function test_out_of_state_pricing_can_turn_a_strong_match_into_an_other_option(): void
@@ -301,9 +304,9 @@ class CollegeMatcherTest extends TestCase
         ]));
 
         $this->assertFalse($results->hasStrongMatches());
-        $tcnj = $results->otherOptions->first();
-        $this->assertSame('TCNJ', $tcnj->college->short_name, 'The closest alternative is listed first.');
+        $tcnj = $results->otherOptions->first(fn (CollegeMatch $match): bool => $match->college->short_name === 'TCNJ');
         $this->assertSame('out-of-state', $tcnj->affordability->rate);
+        $this->assertSame(CostLabel::CannotCompare, $tcnj->affordability->label, 'The in-state federal average is never used for an out-of-state athlete.');
         $this->assertSame(['budget' => 'Its published cost, $51,174 per year (out-of-state rate), is $6,174 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap; the college\'s Net Price Calculator can estimate it. This college offers merit scholarships.'], $tcnj->tradeoffs);
     }
 
@@ -386,7 +389,8 @@ class CollegeMatcherTest extends TestCase
         $this->assertFalse($results->hasStrongMatches());
         $this->assertCount(CollegeMatcher::MINIMUM_RESULTS, $results->otherOptions);
         $this->assertFalse($results->hasShortfall());
-        $this->assertSame('Tampa', $results->otherOptions->first()->college->short_name);
+        $this->assertSame(['Nova Southeastern', 'Tampa'], $results->otherOptions->take(2)->pluck('college.short_name')->all(), 'Both have two tradeoffs; Nova Southeastern is potentially affordable after aid.');
+        $this->assertTrue($results->otherOptions->first()->affordability->isPotentiallyAffordable());
         $this->assertTrue($results->otherOptions->first()->meetsMinimumScore());
         $this->assertFalse($results->otherOptions->last()->meetsMinimumScore(), 'Fallback alternatives are marked so the page can label them.');
         $results->otherOptions->each(fn (CollegeMatch $match) => $this->assertNotEmpty($match->tradeoffs));

@@ -150,6 +150,20 @@
         .afford.fits { background: #f0fdf4; border-color: #86efac; }
         .afford.fits h3 { color: #166534; }
         .afford.neutral h3 { color: #374151; }
+        .afford.maybe { background: #f5f3ff; border-color: #c4b5fd; }
+        .afford.maybe h3 { color: #374151; }
+        .afford p { margin: 0; }
+        .cost-label { margin-bottom: 2px; }
+        .pill.cost-fits { background: #dcfce7; color: #166534; }
+        .pill.cost-maybe { background: #ede9fe; color: #5b21b6; }
+        .pill.cost-over { background: #ffedd5; color: #9a3412; }
+        .pill.cost-neutral { background: #f3f4f6; color: #374151; }
+        .cost-part { display: grid; gap: 4px; }
+        .net-price { padding-top: 8px; border-top: 1px dashed #d1d5db; }
+        .cost-year { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #4b5563; }
+        .cost-details summary { cursor: pointer; font-weight: 600; color: #3b2a8f; }
+        .cost-details ul { margin: 6px 0 0 20px; display: grid; gap: 4px; font-size: 0.92rem; }
+        .summary-detail { font-weight: 400; color: #4b5563; }
         .academic { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #ddd6fe; background: #f5f3ff; display: grid; gap: 6px; }
         .academic h3 { margin: 0; color: #3b2a8f; }
         .academic p { margin: 0; }

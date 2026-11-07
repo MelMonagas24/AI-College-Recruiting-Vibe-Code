@@ -26,6 +26,9 @@
             <a href="#strong-heading">{{ $results->strongMatches->count() }} Strong {{ $results->strongMatches->count() === 1 ? 'Match' : 'Matches' }}</a>
             <span aria-hidden="true">·</span>
             <a href="#other-heading">{{ $results->otherOptions->count() }} Other {{ $results->otherOptions->count() === 1 ? 'Option' : 'Options' }} to Consider</a>
+            @if ($results->potentiallyAffordableCount() > 0)
+                <span class="summary-detail">({{ $results->potentiallyAffordableCount() }} potentially affordable after aid)</span>
+            @endif
         </p>
         @if ($uncheckedCriteria !== [])
             <p class="fine summary-note">
@@ -124,6 +127,7 @@
             <p>
                 These colleges are in your division and could still be worth exploring, but each one has at least one tradeoff, listed on its card.
                 Colleges with the fewest tradeoffs are listed first. A published cost above your budget doesn't rule a college out: financial aid could lower what you would actually pay.
+                Colleges marked "Potentially affordable after aid" have a federal average net price within your budget, which is a reason to look closer, not a promise of your price.
             </p>
 
             @foreach ($results->featuredOtherOptions() as $match)
@@ -149,7 +153,8 @@
             <li>Only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.</li>
             <li>Colleges are filtered by your division choice and your planned major. Colleges known not to offer your major are removed.</li>
             <li><strong>Strong Matches</strong> meet your major, size, and budget, each confirmed by verified data. A college we can't confirm offers your major, or whose cost or size isn't verified, is never called a Strong Match. A "$45,000+" budget has no upper limit, so any verified published cost counts for the budget check, but the card shows the actual cost and your family decides whether it is affordable. If you chose "Unsure" for budget, affordability is not checked at all, and a Strong Match says nothing about cost.</li>
-            <li><strong>Other Options to Consider</strong> miss or can't confirm at least one of those criteria, and every tradeoff is listed on the card. They are sorted by fewest tradeoffs first.</li>
+            <li><strong>Other Options to Consider</strong> miss or can't confirm at least one of those criteria, and every tradeoff is listed on the card. They are sorted by fewest tradeoffs first, and among colleges with the same number, those that are potentially affordable after aid come first.</li>
+            <li><strong>Federal average net price</strong> is the 2024-25 average cost after grants and scholarships for full-time first-year students who received federal financial aid, from the U.S. Department of Education's College Scorecard. It is shown next to the 2026-27 published cost and is not a personalized estimate or a scholarship guarantee. A college is "Potentially affordable after aid" only when this average applies to you and is within your budget. At public colleges it covers only in-state students, so it is never compared for out-of-state students. It never makes a college a Strong Match.</li>
             <li>Within each group, colleges are ranked by budget, campus environment, size, merit scholarships, academic fit, and what matters most to you. Affordability counts the most. Campus environment only changes the order; it never moves a college between groups.</li>
             <li>Published costs are prices before grants and scholarships. Your family's actual cost will likely be different. Use each college's Net Price Calculator for a personal estimate.</li>
             <li>Public colleges show their in-state price only if you live in the same state ({{ $homeStateName }}); otherwise they show the out-of-state price. Each college decides who qualifies as an in-state resident.</li>
