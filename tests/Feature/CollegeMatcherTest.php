@@ -97,7 +97,7 @@ class CollegeMatcherTest extends TestCase
         $this->assertFalse($results->hasStrongMatches());
         $this->assertCount(3, $results->otherOptions);
         $results->otherOptions->each(function (CollegeMatch $match): void {
-            $this->assertStringContainsString("We couldn't confirm that it offers a bachelor's degree in Education, so this match can't be confirmed.", $match->tradeoffs[0]);
+            $this->assertStringContainsString("We couldn't confirm that it offers a bachelor's degree in Education, so this match can't be confirmed.", $match->tradeoffs['major']);
             $this->assertNotContains('Offers Education (federal degree data)', $match->matchedOn);
         });
     }
@@ -119,7 +119,7 @@ class CollegeMatcherTest extends TestCase
         $this->assertNull($match->affordability->cost);
         $this->assertNull($match->affordability->gap);
         $this->assertFalse($match->isStrongMatch());
-        $this->assertSame(["Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $match->tradeoffs);
+        $this->assertSame(['budget' => "Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $match->tradeoffs);
         $this->assertStringNotContainsString('$', implode(' ', [...$match->unknowns, ...$match->matchedOn, ...$match->tradeoffs]));
     }
 
@@ -282,9 +282,9 @@ class CollegeMatcherTest extends TestCase
         $this->assertSame([], $tcnj->tradeoffs);
 
         $this->assertSame(['Montclair State', 'Scranton'], $results->otherOptions->pluck('college.short_name')->all());
-        $this->assertSame(['It\'s a Large college (18,712 undergraduates, Fall 2024), not medium.'], $results->otherOptions[0]->tradeoffs);
+        $this->assertSame(['size' => 'It\'s a Large college (18,712 undergraduates, Fall 2024), not medium.'], $results->otherOptions[0]->tradeoffs);
         $this->assertCount(2, $results->otherOptions[1]->tradeoffs, 'Scranton is above budget and small, and both tradeoffs are listed.');
-        $this->assertStringContainsString('is $30,710 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap', $results->otherOptions[1]->tradeoffs[0]);
+        $this->assertStringContainsString('is $30,710 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap', $results->otherOptions[1]->tradeoffs['budget']);
     }
 
     public function test_out_of_state_pricing_can_turn_a_strong_match_into_an_other_option(): void
@@ -304,7 +304,7 @@ class CollegeMatcherTest extends TestCase
         $tcnj = $results->otherOptions->first();
         $this->assertSame('TCNJ', $tcnj->college->short_name, 'The closest alternative is listed first.');
         $this->assertSame('out-of-state', $tcnj->affordability->rate);
-        $this->assertSame(['Its published cost, $51,174 per year (out-of-state rate), is $6,174 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap; the college\'s Net Price Calculator can estimate it. This college offers merit scholarships.'], $tcnj->tradeoffs);
+        $this->assertSame(['budget' => 'Its published cost, $51,174 per year (out-of-state rate), is $6,174 above the top of your family\'s budget ($30,000–$45,000). Financial aid could close some or all of this gap; the college\'s Net Price Calculator can estimate it. This college offers merit scholarships.'], $tcnj->tradeoffs);
     }
 
     public function test_other_options_with_fewer_tradeoffs_are_listed_first(): void
@@ -328,7 +328,7 @@ class CollegeMatcherTest extends TestCase
 
         $this->assertTrue($match->isStrongMatch());
         $this->assertSame(AffordabilityStatus::MayExceedBudget, $match->affordability->status);
-        $this->assertSame(['You chose an open-ended budget ($45,000+), so this college still counts for the budget check. Its published cost is $90,000 per year before aid. Your family will need to decide whether that is affordable.'], $match->notes);
+        $this->assertSame(['budget' => 'You chose an open-ended budget ($45,000+), so this college still counts for the budget check. Its published cost is $90,000 per year before aid. Your family will need to decide whether that is affordable.'], $match->notes);
         $this->assertStringNotContainsString('within', implode(' ', [...$match->matchedOn, ...$match->notes]), 'An expensive college is never called "within budget".');
     }
 
@@ -341,8 +341,8 @@ class CollegeMatcherTest extends TestCase
 
         $this->assertCount(2, $results->strongMatches, 'Unknown costs are not penalized when the budget is "Unsure".');
         $notes = $results->strongMatches->mapWithKeys(fn (CollegeMatch $match): array => [$match->college->name => $match->notes]);
-        $this->assertSame(['Affordability has not been checked: you chose "Unsure" for your family\'s budget, so this college\'s published cost ($30,000 per year, before aid) was not compared with a budget.'], $notes['Fictional Known Cost College']);
-        $this->assertSame(['Affordability has not been checked or confirmed: you chose "Unsure" for your family\'s budget, and this college\'s 2026-27 cost of attendance is not verified yet.'], $notes['Fictional Unknown Cost College']);
+        $this->assertSame(['budget' => 'Affordability has not been checked: you chose "Unsure" for your family\'s budget, so this college\'s published cost ($30,000 per year, before aid) was not compared with a budget.'], $notes['Fictional Known Cost College']);
+        $this->assertSame(['budget' => 'Affordability has not been checked or confirmed: you chose "Unsure" for your family\'s budget, and this college\'s 2026-27 cost of attendance is not verified yet.'], $notes['Fictional Unknown Cost College']);
         $results->strongMatches->each(fn (CollegeMatch $match) => $this->assertStringNotContainsString('budget range', implode(' ', $match->matchedOn)));
     }
 
@@ -355,8 +355,8 @@ class CollegeMatcherTest extends TestCase
 
         $this->assertFalse($results->hasStrongMatches());
         $tradeoffs = $results->otherOptions->mapWithKeys(fn (CollegeMatch $match): array => [$match->college->name => $match->tradeoffs]);
-        $this->assertSame(["Its undergraduate enrollment isn't verified, so we can't confirm it's a medium college."], $tradeoffs['Fictional Unknown Size College']);
-        $this->assertSame(["Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $tradeoffs['Fictional Unknown Cost College']);
+        $this->assertSame(['size' => "Its undergraduate enrollment isn't verified, so we can't confirm it's a medium college."], $tradeoffs['Fictional Unknown Size College']);
+        $this->assertSame(['budget' => "Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget."], $tradeoffs['Fictional Unknown Cost College']);
     }
 
     public function test_no_preference_unsure_and_undecided_are_not_checked(): void

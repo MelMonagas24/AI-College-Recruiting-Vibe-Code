@@ -41,7 +41,7 @@
 
     @if ($explanations->status !== ExplanationStatus::Generated)
         <div class="notice" role="status">
-            <strong>Personalized explanations are unavailable.</strong>
+            <strong>{{ $explanations->status === ExplanationStatus::Partial ? 'Some personalized explanations are unavailable.' : 'Personalized explanations are unavailable.' }}</strong>
             {{ $explanations->message }}
         </div>
     @endif

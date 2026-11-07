@@ -24,6 +24,24 @@ final readonly class ExplanationResult
         return new self(ExplanationStatus::Generated, $explanations);
     }
 
+    /**
+     * The result after each college's explanation was checked on its own.
+     *
+     * @param  array<int, string>  $accepted  Explanations that passed the fact check, keyed by college ID.
+     */
+    public static function checked(array $accepted, int $requested): self
+    {
+        return match (true) {
+            count($accepted) === $requested => self::generated($accepted),
+            $accepted === [] => self::failed('The AI explanations did not pass our fact check, so they are not shown. The verified facts on every card are unaffected.'),
+            default => new self(
+                ExplanationStatus::Partial,
+                $accepted,
+                'Some AI explanations did not pass our fact check, so they are not shown. The verified facts on every card are unaffected.',
+            ),
+        };
+    }
+
     public static function notConfigured(): self
     {
         return new self(

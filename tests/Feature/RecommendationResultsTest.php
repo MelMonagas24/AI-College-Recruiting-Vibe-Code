@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\College;
 use App\Models\CollegeSource;
+use App\Recommendations\CollegeMatcher;
 use App\Recommendations\ExplanationResult;
 use App\Recommendations\MatchResults;
 use App\Recommendations\RecommendationExplainer;
@@ -95,6 +96,22 @@ class RecommendationResultsTest extends TestCase
             ->assertSee('The AI service could not be reached.')
             ->assertSee('Your college matches')
             ->assertDontSee('AI-generated');
+    }
+
+    public function test_explanations_that_passed_are_shown_when_others_failed(): void
+    {
+        $this->seed(CollegeSeeder::class);
+        $tampa = College::where('short_name', 'Tampa')->value('id');
+        $this->useExplainer(ExplanationResult::checked([$tampa => 'Tampa offers Business and plays in Division II.'], CollegeMatcher::MAXIMUM_RESULTS));
+
+        $response = $this->post(route('questionnaire.store'), $this->fictionalAthlete());
+
+        $response->assertOk()
+            ->assertSee('Some personalized explanations are unavailable.')
+            ->assertSee('Some AI explanations did not pass our fact check, so they are not shown. The verified facts on every card are unaffected.')
+            ->assertSee('Tampa offers Business and plays in Division II.')
+            ->assertSee('Personalized explanation unavailable');
+        $this->assertSame(1, substr_count($response->getContent(), '<span class="badge ai">AI-generated</span>'));
     }
 
     public function test_unverified_costs_are_shown_as_unknown(): void

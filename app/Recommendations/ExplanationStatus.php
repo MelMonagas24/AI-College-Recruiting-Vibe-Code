@@ -10,6 +10,9 @@ enum ExplanationStatus: string
     /** The AI wrote explanations and they passed the fact check. */
     case Generated = 'generated';
 
+    /** Some explanations passed the fact check; the rest are not shown. */
+    case Partial = 'partial';
+
     /** No API key is configured, so the AI was not called. */
     case NotConfigured = 'not_configured';
 

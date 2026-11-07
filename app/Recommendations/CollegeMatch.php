@@ -10,12 +10,15 @@ use App\Models\College;
 final readonly class CollegeMatch
 {
     /**
+     * Each list of reasons is keyed by topic (such as "budget", "size", or "setting"),
+     * so cost information can be kept out of AI explanations.
+     *
      * @param  float  $score  Ranking score, including academic fit when scores could be compared.
      * @param  float  $preferenceScore  Score from the athlete's preferences only, which decides whether an Other Option is shown.
-     * @param  list<string>  $matchedOn  Preferences this college meets, stated as verified facts.
-     * @param  list<string>  $unknowns  Facts we could not verify for this college.
-     * @param  list<string>  $tradeoffs  Key criteria (major, size, budget) this college misses or we could not confirm. Empty for a Strong Match.
-     * @param  list<string>  $notes  Other things to consider that never decide the category, such as campus setting.
+     * @param  array<string, string>  $matchedOn  Preferences this college meets, stated as verified facts.
+     * @param  array<string, string>  $unknowns  Facts we could not verify for this college.
+     * @param  array<string, string>  $tradeoffs  Key criteria ("major", "size", "budget") this college misses or we could not confirm. Empty for a Strong Match.
+     * @param  array<string, string>  $notes  Other things to consider that never decide the category, such as campus setting.
      */
     public function __construct(
         public College $college,
@@ -36,6 +39,11 @@ final readonly class CollegeMatch
     {
         return $this->tradeoffs === [];
     }
+
+    /**
+     * Topics that describe cost, budget, or financial aid. They are shown only in the verified data on each card.
+     */
+    public const COST_TOPICS = ['budget', 'athletic_scholarships'];
 
     /**
      * Whether the college meets enough of the athlete's preferences to be listed without being a fallback alternative.

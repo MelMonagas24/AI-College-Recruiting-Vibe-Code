@@ -8,6 +8,7 @@ use Anthropic\Core\Exceptions\APIConnectionException;
 use Anthropic\Core\Exceptions\AuthenticationException;
 use Anthropic\Core\Exceptions\RateLimitException;
 use App\Models\College;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 
@@ -15,13 +16,30 @@ use JsonException;
  * Asks Claude to explain, in plain language, why already-chosen colleges fit.
  *
  * Claude never chooses colleges. It only receives the colleges the matcher picked,
- * with their verified facts, and its answer is rejected unless it explains exactly
- * those colleges without naming others or quoting dollar amounts we did not send.
- * Only questionnaire preferences are sent: no name, email, GPA, or test scores.
+ * with their verified facts, and each explanation is checked on its own: one that
+ * names another college, mentions money, cost, or budget, predicts admission, or
+ * overstates an Other Option is rejected, and only that college loses its
+ * explanation. Rejected colleges get one retry. Cost and affordability are never
+ * sent to Claude; they appear only in the verified data on each card.
+ * Only questionnaire preferences are sent: no name, email, GPA, test scores, or budget.
  */
 class ClaudeRecommendationExplainer implements RecommendationExplainer
 {
     public const MAX_EXPLANATION_LENGTH = 600;
+
+    /**
+     * Requests per results page: the first request, plus one retry for rejected colleges.
+     */
+    public const MAX_ATTEMPTS = 2;
+
+    /**
+     * The only sentence about cost Claude may write, pointing to the verified cost details on the card.
+     */
+    public const COST_POINTER = 'Check the cost details below.';
+
+    private const STRONG_MATCH = 'Strong Match';
+
+    private const OTHER_OPTION = 'Other Option to Consider';
 
     /**
      * Phrases that predict admission or label colleges by selectivity.
@@ -35,26 +53,26 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         '/\b(reach|safety|target)\s+(school|college)s?\b/i',
     ];
 
-    private const STRONG_MATCH = 'Strong Match';
-
-    private const OTHER_OPTION = 'Other Option to Consider';
+    /**
+     * Money in any form: currency symbols and words, and shorthand like "51K".
+     */
+    private const MONEY_PATTERN = '/[$€£]|\b(dollars?|usd|bucks)\b|\b\d+(\.\d+)?\s?k\b/i';
 
     /**
-     * Phrases that claim a cost fits the family's budget.
+     * Words about cost, budget, or financial aid, which belong only in the verified cost details.
      */
-    private const BUDGET_FIT_PATTERNS = [
-        '/\b(within|under|inside)\s+(your\s+)?(family\'?s?\s+)?budget\b/i',
-        '/\bfits?\s+(within\s+)?(your\s+)?(family\'?s?\s+)?budget\b/i',
-        '/\b(is|are|very|quite)\s+affordable\b/i',
-    ];
+    private const COST_WORDS_PATTERN = '/\b(budgets?|afford\w*|costs?|costly|pric(e|es|ed|ey|ing)|tuition|fees?|expensive|inexpensive|cheap\w*|bargain|financial(ly)?|aid|scholarships?|grants?|loans?|pay|pays|paying|paid|money|savings?)\b/i';
 
     /**
      * Phrases that would present a college with tradeoffs as a complete fit.
      */
     private const OVERSTATED_FIT_PATTERNS = [
-        '/\b(perfect|ideal|strong|great|excellent|top)\s+(fit|match|choice)\b/i',
-        '/\bchecks\s+(all|every)\b/i',
-        '/\b(meets|fits|matches)\s+(all|every)\s+(of\s+)?your\b/i',
+        '/\b(perfect|ideal|flawless)\s+(fit|match|choice|school|college|option)\b/i',
+        '/\b(strong|great|excellent|complete|total|exact)\s+(fit|match)\b/i',
+        '/\b(checks|ticks)\s+(all|every)\b/i',
+        '/\b(meets|fits|matches|satisfies)\s+(all|every|everything)\b/i',
+        '/\beverything\s+you(\'re|\s+are)?\s+(looking|want)/i',
+        '/\bno\s+(real\s+)?(tradeoffs?|downsides?|drawbacks?)\b/i',
     ];
 
     private const SYSTEM_PROMPT = <<<'PROMPT'
@@ -64,14 +82,13 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
 
         Rules:
         - Use only the facts provided for that college. If a fact is listed as unknown, say it is unknown rather than guessing.
-        - Name only the college you are explaining. Never mention or suggest any other college.
-        - Published cost is the price before financial aid. Never say or imply it is what the family will pay.
-        - Never call a college affordable unless its cost is "within budget". If it is above budget or unknown, say so plainly.
-        - Do not mention any dollar amount that is not in the provided facts.
-        - Do not predict or promise admission, scholarships, roster spots, playing time, or recruitment. A club league does not determine which NCAA division a player can compete in.
+        - Name only the college you are explaining, using its name exactly as provided. Never mention or suggest any other college.
+        - Never discuss money: no dollar amounts or other numbers about money, and no words like cost, price, tuition, budget, afford, aid, scholarships, or pay. The page shows verified cost details separately. If cost_is_a_tradeoff is true, end with exactly this sentence: "Check the cost details below."
+        - Only use numbers that appear in the facts for that college.
+        - Do not predict or promise admission, roster spots, playing time, or recruitment. A club league does not determine which NCAA division a player can compete in.
         - Never discuss admission chances or label a college a reach, match, target, or safety. Do not use the words "chances", "odds", or "guarantee". If the athlete's test score is below the middle 50%, do not discourage her: colleges admit students below that range and consider much more than test scores.
-        - Never say a cost is within or fits the budget, or call it affordable, unless compared_with_family_budget is "within budget". If the budget was "not checked", say affordability has not been checked. If it was "not compared" for an open-ended budget, state the published cost and say the family decides whether it is affordable.
-        - Each college has a category. A "Strong Match" meets the athlete's division, major, size, and budget (a budget the athlete left as "Unsure" was not checked). An "Other Option to Consider" has tradeoffs: name its most important tradeoff honestly, and never call it a perfect, ideal, strong, or great fit or say it meets all of her preferences.
+        - Each college has a category. A "Strong Match" meets the athlete's division, major, and size, and passed the budget check shown on the page. An "Other Option to Consider" has tradeoffs: name its most important non-cost tradeoff honestly, and never call it a perfect, ideal, strong, or great fit or say it meets all of her preferences. If its tradeoffs list is empty, cost is its only tradeoff: do not invent another one, and end with "Check the cost details below."
+        - If a college has previous_explanation_rejected_because, a previous explanation broke a rule. Write a new one that avoids that problem.
         - Write directly to the athlete ("you"), in plain language a high school student understands.
         PROMPT;
 
@@ -99,132 +116,213 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
             return ExplanationResult::generated([]);
         }
 
-        try {
-            $message = ($this->client ?? new Client(apiKey: $this->apiKey))->messages->create(
-                maxTokens: 8000,
-                messages: [['role' => 'user', 'content' => $this->buildRequest($answers, $results)]],
-                model: $this->model,
-                outputConfig: [
-                    'effort' => 'low',
-                    'format' => ['type' => 'json_schema', 'schema' => $this->schema()],
-                ],
-                system: self::SYSTEM_PROMPT,
-                requestOptions: ['timeout' => 60.0, 'maxRetries' => 1],
-            );
-        } catch (AuthenticationException $e) {
-            return $this->failure('The AI service rejected the API key. Check ANTHROPIC_API_KEY in your .env file.', $e);
-        } catch (RateLimitException $e) {
-            return $this->failure('The AI service is busy right now. Please try again in a minute.', $e);
-        } catch (APIConnectionException $e) {
-            return $this->failure('The AI service could not be reached. Check your internet connection and try again.', $e);
-        } catch (AnthropicException $e) {
-            return $this->failure('The AI service returned an error, so explanations are unavailable.', $e);
-        }
+        $pending = $results->matches->keyBy(fn (CollegeMatch $match): int => $match->college->id);
+        $accepted = [];
+        $rejections = [];
 
-        if ($message->stopReason === 'refusal') {
-            return ExplanationResult::failed('The AI service declined to write explanations for this request.');
-        }
+        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS && $pending->isNotEmpty(); $attempt++) {
+            try {
+                $response = $this->requestExplanations($this->buildRequest($answers, $pending->values(), $rejections));
+            } catch (AnthropicException $e) {
+                if ($attempt === 1) {
+                    return $this->failure($this->serviceErrorMessage($e), $e);
+                }
 
-        $text = null;
-        foreach ($message->content as $block) {
-            if ($block->type === 'text') {
-                $text = $block->text;
+                Log::warning('College explanation retry unavailable: '.class_basename($e));
                 break;
             }
+
+            if ($response === null) {
+                if ($attempt === 1) {
+                    return ExplanationResult::failed('The AI service declined to write explanations for this request.');
+                }
+                break;
+            }
+
+            [$passed, $rejections] = $this->validateResponse($response, $pending->values());
+            $this->logRejections($rejections, $pending, $attempt);
+
+            $accepted += $passed;
+            $pending = $pending->except(array_keys($passed));
         }
 
-        try {
-            return ExplanationResult::generated($this->validateResponse($text ?? '', $results));
-        } catch (InvalidExplanationException $e) {
-            return $this->failure('The AI response did not pass our fact check, so it is not shown.', $e);
-        }
+        return ExplanationResult::checked($accepted, $results->matches->count());
     }
 
     /**
-     * The verified facts Claude may use, as JSON. Only matching preferences are sent.
+     * The verified facts Claude may use, as JSON. Cost, budget, and financial aid are never included.
      *
      * @param  array<string, mixed>  $answers
+     * @param  Collection<int, CollegeMatch>  $matches
+     * @param  array<int, InvalidExplanationException>  $rejections  Why a previous explanation was rejected, keyed by college ID.
      */
-    public function buildRequest(array $answers, MatchResults $results): string
+    public function buildRequest(array $answers, Collection $matches, array $rejections = []): string
     {
         $preferences = [
             'ncaa_division' => config("questionnaire.divisions.{$answers['division']}"),
             'interested_in_studying' => config("questionnaire.majors.{$answers['major']}"),
-            'family_budget_per_year_after_aid' => config("questionnaire.budgets.{$answers['budget']}"),
             'campus_environment' => config("questionnaire.settings.{$answers['setting']}"),
             'college_size' => config("questionnaire.sizes.{$answers['size']}"),
-            'matters_most' => config("questionnaire.priorities.{$answers['priority']}"),
+            'matters_most' => $answers['priority'] === 'affordability'
+                ? 'not shared (it is covered by the verified cost details on the page)'
+                : config("questionnaire.priorities.{$answers['priority']}"),
         ];
 
-        $colleges = $results->matches->map(fn (CollegeMatch $match): array => [
-            'college_id' => $match->college->id,
-            'name' => $match->college->name,
-            'location' => "{$match->college->city}, {$match->college->state}",
-            'ncaa_division' => $match->college->ncaa_division,
-            'conference' => $match->college->conference ?? 'unknown',
-            'campus_environment' => $match->college->campus_environment?->label() ?? 'unknown',
-            'undergraduates' => $match->college->undergraduate_enrollment
-                ? number_format($match->college->undergraduate_enrollment)." ({$match->college->enrollment_term})"
-                : 'unknown',
-            'published_cost_of_attendance_before_aid' => $this->costFacts($match),
-            'merit_scholarships' => $match->college->merit_aid->label(),
-            'sat_act_policy' => $match->college->test_policy?->federalLabel() ?? 'unknown',
-            'athlete_test_score_compared_with_first_year_students' => $this->academicFitFact($match->academicFit),
-            'matched_preferences' => $match->matchedOn,
-            'unknown_facts' => $match->unknowns,
-            'category' => $match->isStrongMatch() ? self::STRONG_MATCH : self::OTHER_OPTION,
-            'tradeoffs' => $match->tradeoffs,
-            'other_things_to_consider' => $match->notes,
-        ])->values()->all();
+        $colleges = $matches->map(function (CollegeMatch $match) use ($rejections): array {
+            $facts = $this->collegeFacts($match);
+
+            if (isset($rejections[$match->college->id])) {
+                $facts['previous_explanation_rejected_because'] = $rejections[$match->college->id]->getMessage();
+            }
+
+            return $facts;
+        })->values()->all();
 
         return json_encode(['athlete_preferences' => $preferences, 'colleges' => $colleges], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
     /**
-     * Accept the AI answer only if it explains exactly the given colleges and
-     * introduces no other colleges or dollar amounts.
+     * Check each college's explanation on its own.
      *
-     * @return array<int, string>
-     *
-     * @throws InvalidExplanationException
+     * @param  Collection<int, CollegeMatch>  $matches  The colleges that were asked about.
+     * @return array{0: array<int, string>, 1: array<int, InvalidExplanationException>} Accepted explanations and rejections, each keyed by college ID.
      */
-    public function validateResponse(string $json, MatchResults $results): array
+    public function validateResponse(string $json, Collection $matches): array
     {
+        $matchesById = $matches->keyBy(fn (CollegeMatch $match): int => $match->college->id);
+
         try {
             $data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            throw new InvalidExplanationException('The AI response was not valid JSON.');
+            $invalid = new InvalidExplanationException('invalid_json', 'The response was not valid JSON.');
+
+            return [[], $matchesById->map(fn (): InvalidExplanationException => $invalid)->all()];
         }
 
-        $matchesById = $results->matches->keyBy(fn (CollegeMatch $match): int => $match->college->id);
-        $explanations = [];
+        $texts = [];
+        $rejections = [];
 
         foreach ($data['explanations'] ?? [] as $item) {
             $id = $item['college_id'] ?? null;
-            $text = trim((string) ($item['why_it_fits'] ?? ''));
 
             if (! is_int($id) || ! $matchesById->has($id)) {
-                throw new InvalidExplanationException('The AI response included a college that was not recommended.');
+                Log::warning('AI college explanation ignored', ['rule' => 'unrequested_college']);
+
+                continue;
             }
 
-            if (isset($explanations[$id]) || $text === '' || mb_strlen($text) > self::MAX_EXPLANATION_LENGTH) {
-                throw new InvalidExplanationException('The AI response had a missing, repeated, or overly long explanation.');
+            if (isset($texts[$id])) {
+                $rejections[$id] = new InvalidExplanationException('duplicate', 'This college was explained more than once.');
+
+                continue;
             }
 
-            $this->assertNoOtherColleges($text, $matchesById->get($id)->college);
-            $this->assertOnlyKnownAmounts($text, $matchesById->get($id));
-            $this->assertNoAdmissionPredictions($text);
-            $this->assertTradeoffsAreNotHidden($text, $matchesById->get($id));
-            $this->assertNoUnverifiedBudgetFit($text, $matchesById->get($id));
-
-            $explanations[$id] = $text;
+            $texts[$id] = trim((string) ($item['why_it_fits'] ?? ''));
         }
 
-        if (count($explanations) !== $matchesById->count()) {
-            throw new InvalidExplanationException('The AI response did not explain every recommended college.');
+        $accepted = [];
+
+        foreach ($matchesById as $id => $match) {
+            if (isset($rejections[$id])) {
+                continue;
+            }
+
+            try {
+                $this->validateExplanation($texts[$id] ?? '', $match);
+                $accepted[$id] = $texts[$id];
+            } catch (InvalidExplanationException $e) {
+                $rejections[$id] = $e;
+            }
         }
 
-        return $explanations;
+        return [$accepted, $rejections];
+    }
+
+    /**
+     * Accept one explanation only if it sticks to the verified, non-cost facts sent for its college.
+     *
+     * @throws InvalidExplanationException
+     */
+    public function validateExplanation(string $text, CollegeMatch $match): void
+    {
+        if ($text === '') {
+            throw new InvalidExplanationException('missing', 'No explanation was written for this college.');
+        }
+
+        if (mb_strlen($text) > self::MAX_EXPLANATION_LENGTH) {
+            throw new InvalidExplanationException('too_long', 'The explanation was too long.');
+        }
+
+        $withoutPointer = trim(str_ireplace(self::COST_POINTER, '', $text));
+
+        $this->assertNoOtherColleges($withoutPointer, $match->college);
+        $this->assertNoMoneyOrBudgetClaims($withoutPointer);
+        $this->assertOnlyKnownNumbers($withoutPointer, $match);
+        $this->assertNoAdmissionPredictions($withoutPointer);
+        $this->assertTradeoffsAreNotHidden($withoutPointer, $match);
+    }
+
+    /**
+     * Send the request to Claude. Returns the response text, or null if Claude declined.
+     *
+     * @throws AnthropicException
+     */
+    protected function requestExplanations(string $request): ?string
+    {
+        $message = ($this->client ?? new Client(apiKey: $this->apiKey))->messages->create(
+            maxTokens: 8000,
+            messages: [['role' => 'user', 'content' => $request]],
+            model: $this->model,
+            outputConfig: [
+                'effort' => 'low',
+                'format' => ['type' => 'json_schema', 'schema' => $this->schema()],
+            ],
+            system: self::SYSTEM_PROMPT,
+            requestOptions: ['timeout' => 60.0, 'maxRetries' => 1],
+        );
+
+        if ($message->stopReason === 'refusal') {
+            return null;
+        }
+
+        foreach ($message->content as $block) {
+            if ($block->type === 'text') {
+                return $block->text;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * The verified facts for one college, leaving out every cost, budget, and aid detail.
+     *
+     * @return array<string, mixed>
+     */
+    private function collegeFacts(CollegeMatch $match): array
+    {
+        $college = $match->college;
+        $withoutCost = fn (array $items): array => array_values(array_diff_key($items, array_flip(CollegeMatch::COST_TOPICS)));
+
+        return [
+            'college_id' => $college->id,
+            'name' => $college->name,
+            'location' => "{$college->city}, {$college->state}",
+            'ncaa_division' => $college->ncaa_division,
+            'conference' => $college->conference ?? 'unknown',
+            'campus_environment' => $college->campus_environment?->label() ?? 'unknown',
+            'undergraduates' => $college->undergraduate_enrollment
+                ? number_format($college->undergraduate_enrollment)." ({$college->enrollment_term})"
+                : 'unknown',
+            'sat_act_policy' => $college->test_policy?->federalLabel() ?? 'unknown',
+            'athlete_test_score_compared_with_first_year_students' => $this->academicFitFact($match->academicFit),
+            'matched_preferences' => $withoutCost($match->matchedOn),
+            'unknown_facts' => $withoutCost($match->unknowns),
+            'category' => $match->isStrongMatch() ? self::STRONG_MATCH : self::OTHER_OPTION,
+            'tradeoffs' => $withoutCost($match->tradeoffs),
+            'cost_is_a_tradeoff' => isset($match->tradeoffs['budget']),
+            'other_things_to_consider' => $withoutCost($match->notes),
+        ];
     }
 
     /**
@@ -254,73 +352,79 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
     }
 
     /**
-     * @return array<string, string>
-     */
-    private function costFacts(CollegeMatch $match): array
-    {
-        $college = $match->college;
-        $affordability = $match->affordability;
-        $format = fn (?int $amount): string => $amount === null ? 'unknown' : '$'.number_format($amount);
-
-        return [
-            'academic_year' => $college->cost_academic_year ?? 'unknown',
-            'applies_to_this_athlete' => $format($affordability->cost),
-            'rate_used' => $affordability->rate ?? 'same price for all students',
-            'compared_with_family_budget' => match ($affordability->status) {
-                AffordabilityStatus::WithinBudget => 'within budget',
-                AffordabilityStatus::AboveBudget => 'above budget',
-                AffordabilityStatus::MayExceedBudget => 'not compared: the family chose an open-ended $45,000+ budget, so the family decides whether this cost is affordable',
-                AffordabilityStatus::NoBudget => 'not checked: the family chose "Unsure" for budget',
-                AffordabilityStatus::CostUnknown => 'unknown: cost not verified',
-            },
-            'amount_above_budget' => $format($affordability->gap),
-            'includes_books_travel_personal' => match ($college->cost_of_attendance_is_complete) {
-                true => 'yes',
-                false => 'no',
-                null => 'unknown',
-            },
-        ];
-    }
-
-    /**
      * Reject text that names any college in our database other than the one explained.
+     *
+     * Full names and unambiguous short names count. A short name that is also a
+     * state or the college's own city (such as "Maryland" or "Tampa") only counts
+     * as "University of ...", so places can be mentioned.
      */
     private function assertNoOtherColleges(string $text, College $explained): void
     {
-        $ownWords = strtolower("{$explained->name} {$explained->short_name} {$explained->city}");
+        $explainedState = config("questionnaire.states.{$explained->state}", $explained->state);
+        $ownWords = strtolower("{$explained->name} {$explained->short_name} {$explained->city} {$explainedState}");
 
-        foreach (College::where('id', '!=', $explained->id)->get(['name', 'short_name']) as $other) {
-            foreach ([$other->name, $other->short_name] as $candidate) {
+        foreach (College::where('id', '!=', $explained->id)->get(['name', 'short_name', 'city']) as $other) {
+            foreach ($this->namesFor($other) as $candidate) {
                 if (str_contains($ownWords, strtolower($candidate))) {
                     continue;
                 }
 
                 if (preg_match('/\b'.preg_quote($candidate, '/').'\b/i', $text) === 1) {
-                    throw new InvalidExplanationException("The AI response mentioned another college ({$candidate}).");
+                    throw new InvalidExplanationException('other_college', "It mentioned another college ({$candidate}).");
                 }
             }
         }
     }
 
     /**
-     * Reject dollar amounts that are not among the verified facts sent for this college.
+     * The names a college can be recognized by in text.
+     *
+     * @return list<string>
      */
-    private function assertOnlyKnownAmounts(string $text, CollegeMatch $match): void
+    private function namesFor(College $college): array
     {
-        $allowed = array_filter([
-            $match->college->cost_of_attendance_in_state,
-            $match->college->cost_of_attendance_out_of_state,
-            $match->college->tuition_fees_in_state,
-            $match->college->tuition_fees_out_of_state,
-            $match->affordability->gap,
-            ...array_filter(array_merge(...array_values(CollegeMatcher::BUDGET_RANGES))),
-        ]);
+        $names = [$college->name, preg_replace('/^The\s+/i', '', $college->name)];
 
-        preg_match_all('/\$\s?([\d,]+)/', $text, $found);
+        $hyphen = strrpos($college->name, '-');
+        if ($hyphen !== false && preg_match('/\b(University|College)\b/', substr($college->name, 0, $hyphen)) === 1) {
+            $names[] = preg_replace('/^The\s+/i', '', substr($college->name, 0, $hyphen));
+        }
 
-        foreach ($found[1] as $amount) {
-            if (! in_array((int) str_replace(',', '', $amount), $allowed, true)) {
-                throw new InvalidExplanationException("The AI response mentioned an unverified dollar amount (\${$amount}).");
+        $isPlaceName = in_array(strtolower($college->short_name), array_map('strtolower', [...array_values(config('questionnaire.states')), $college->city]), true);
+        $names[] = $isPlaceName ? "University of {$college->short_name}" : $college->short_name;
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Reject any mention of money, cost, budget, or financial aid. Those facts are shown only in the verified cost details.
+     */
+    private function assertNoMoneyOrBudgetClaims(string $text): void
+    {
+        if (preg_match(self::MONEY_PATTERN, $text, $found) === 1) {
+            throw new InvalidExplanationException('money', "It mentioned money (\"{$found[0]}\"). Never mention money.");
+        }
+
+        if (preg_match(self::COST_WORDS_PATTERN, $text, $found) === 1) {
+            throw new InvalidExplanationException('cost_or_budget', "It discussed cost, budget, or aid (\"{$found[0]}\"). Leave that to the verified cost details.");
+        }
+    }
+
+    /**
+     * Reject numbers of 100 or more that do not appear in the facts sent for this college, such as an invented price.
+     */
+    private function assertOnlyKnownNumbers(string $text, CollegeMatch $match): void
+    {
+        $numbers = fn (string $source): array => array_map(
+            fn (string $number): string => str_replace(',', '', $number),
+            preg_match_all('/\d[\d,]*/', $source, $found) ? $found[0] : [],
+        );
+
+        $allowed = $numbers(json_encode($this->collegeFacts($match)));
+
+        foreach ($numbers($text) as $number) {
+            if ((int) $number >= 100 && ! in_array($number, $allowed, true)) {
+                throw new InvalidExplanationException('unverified_number', "It used a number that is not in the facts ({$number}).");
             }
         }
     }
@@ -332,7 +436,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
     {
         foreach (self::ADMISSION_PREDICTION_PATTERNS as $pattern) {
             if (preg_match($pattern, $text, $found) === 1) {
-                throw new InvalidExplanationException("The AI response predicted admission (\"{$found[0]}\").");
+                throw new InvalidExplanationException('admission_prediction', "It predicted admission (\"{$found[0]}\").");
             }
         }
     }
@@ -348,23 +452,7 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
 
         foreach (self::OVERSTATED_FIT_PATTERNS as $pattern) {
             if (preg_match($pattern, $text, $found) === 1) {
-                throw new InvalidExplanationException("The AI response called an Other Option a full fit (\"{$found[0]}\").");
-            }
-        }
-    }
-
-    /**
-     * Reject text that says a cost fits the budget unless the published cost is verified to be within it.
-     */
-    private function assertNoUnverifiedBudgetFit(string $text, CollegeMatch $match): void
-    {
-        if ($match->affordability->status === AffordabilityStatus::WithinBudget) {
-            return;
-        }
-
-        foreach (self::BUDGET_FIT_PATTERNS as $pattern) {
-            if (preg_match($pattern, $text, $found) === 1) {
-                throw new InvalidExplanationException("The AI response claimed an unconfirmed budget fit (\"{$found[0]}\").");
+                throw new InvalidExplanationException('overstated_fit', "It called an Other Option a full fit (\"{$found[0]}\").");
             }
         }
     }
@@ -382,9 +470,38 @@ class ClaudeRecommendationExplainer implements RecommendationExplainer
         };
     }
 
+    /**
+     * Log which rule each rejected explanation broke. Athlete answers are never logged.
+     *
+     * @param  array<int, InvalidExplanationException>  $rejections
+     * @param  Collection<int, CollegeMatch>  $matchesById
+     */
+    private function logRejections(array $rejections, Collection $matchesById, int $attempt): void
+    {
+        foreach ($rejections as $id => $rejection) {
+            Log::warning('AI college explanation rejected', [
+                'attempt' => $attempt,
+                'college_id' => $id,
+                'college' => $matchesById->get($id)?->college->short_name,
+                'rule' => $rejection->rule,
+                'reason' => $rejection->getMessage(),
+            ]);
+        }
+    }
+
+    private function serviceErrorMessage(AnthropicException $e): string
+    {
+        return match (true) {
+            $e instanceof AuthenticationException => 'The AI service rejected the API key. Check ANTHROPIC_API_KEY in your .env file.',
+            $e instanceof RateLimitException => 'The AI service is busy right now. Please try again in a minute.',
+            $e instanceof APIConnectionException => 'The AI service could not be reached. Check your internet connection and try again.',
+            default => 'The AI service returned an error, so explanations are unavailable.',
+        };
+    }
+
     private function failure(string $message, \Throwable $e): ExplanationResult
     {
-        Log::warning('College explanations unavailable: '.$e->getMessage());
+        Log::warning('College explanations unavailable: '.class_basename($e).': '.$e->getMessage());
 
         return ExplanationResult::failed($message);
     }
