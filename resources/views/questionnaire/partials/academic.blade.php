@@ -28,57 +28,63 @@
 @endphp
 
 <section class="academic" aria-label="Academic context">
-    <h3>Academic context</h3>
-
     @if ($college->admissions_data_source === null)
+        <h3>Academic context</h3>
         <p>We don't have verified admissions data for this college yet.</p>
     @else
-        <p>
-            @if ($fromCommonDataSet)
-                <strong>SAT/ACT policy for {{ $college->test_policy_term }}:</strong> {{ $college->test_policy->description() }}
-                @if ($college->test_policy_note)
-                    <span class="fine">{{ $college->test_policy_note }}</span>
+        <details class="academic-details">
+            <summary>
+                <h3>Academic context</h3>
+                <span class="academic-hint">SAT/ACT policy, test score ranges, GPA, and admission rate</span>
+            </summary>
+
+            <p>
+                @if ($fromCommonDataSet)
+                    <strong>SAT/ACT policy for {{ $college->test_policy_term }}:</strong> {{ $college->test_policy->description() }}
+                    @if ($college->test_policy_note)
+                        <span class="fine">{{ $college->test_policy_note }}</span>
+                    @endif
+                @else
+                    <strong>SAT/ACT policy (federal data, {{ $college->test_policy_term }}):</strong> {{ $college->test_policy->federalLabel() }}.
+                    Policies change, so check the college's admissions website.
                 @endif
-            @else
-                <strong>SAT/ACT policy (federal data, {{ $college->test_policy_term }}):</strong> {{ $college->test_policy->federalLabel() }}.
-                Policies change, so check the college's admissions website.
-            @endif
-        </p>
-
-        @if ($college->test_policy !== TestPolicy::NotConsidered)
-            @if ($ranges !== [])
-                <p>{{ $fromCommonDataSet ? "Middle 50% of {$college->admissions_term} first-year students who submitted scores:" : "Federal College Scorecard data ({$college->admissions_term} first-year students), middle 50%:" }} {{ implode(' · ', $ranges) }}.</p>
-            @elseif (! $fromCommonDataSet)
-                <p>Federal data doesn't include SAT or ACT ranges for this college.</p>
-            @endif
-        @endif
-
-        @foreach ($match->academicFit->notes as $note)
-            <p class="{{ $match->academicFit->status === AcademicFitStatus::NotCompared ? '' : 'fit' }}">{{ $note }}</p>
-        @endforeach
-
-        <p>
-            @if ($college->average_high_school_gpa !== null)
-                <strong>Average high school GPA</strong> of {{ $college->admissions_term }} first-year students: {{ number_format($college->average_high_school_gpa, 2) }}
-                (reported by {{ AcademicFit::percent($college->gpa_submitted_percent) }} of them).
-                <span class="fine">Colleges calculate GPA differently, often adding extra points for honors and AP classes, so this may not compare directly with your GPA. {{ $college->gpa_note }}</span>
-            @elseif ($fromCommonDataSet)
-                This college doesn't publish an average high school GPA.
-            @else
-                Average high school GPA isn't included in federal data.
-            @endif
-        </p>
-
-        <p>
-            <strong>Overall admission rate:</strong> {{ AcademicFit::percent($college->admission_rate) }} of all first-year applicants ({{ $college->admissions_term }}).
-            <span class="fine">This describes all applicants, not your individual chances. The process for recruited athletes can differ.</span>
-        </p>
-
-        @if ($admissionsSource)
-            <p class="fine">
-                Source:
-                <a href="{{ $admissionsSource->url }}" target="_blank" rel="noopener">{{ $fromCommonDataSet ? "the college's ".$admissionsSource->data_period : $admissionsSource->data_period }}</a>
             </p>
-        @endif
+
+            @if ($college->test_policy !== TestPolicy::NotConsidered)
+                @if ($ranges !== [])
+                    <p>{{ $fromCommonDataSet ? "Middle 50% of {$college->admissions_term} first-year students who submitted scores:" : "Federal College Scorecard data ({$college->admissions_term} first-year students), middle 50%:" }} {{ implode(' · ', $ranges) }}.</p>
+                @elseif (! $fromCommonDataSet)
+                    <p>Federal data doesn't include SAT or ACT ranges for this college.</p>
+                @endif
+            @endif
+
+            @foreach ($match->academicFit->notes as $note)
+                <p class="{{ $match->academicFit->status === AcademicFitStatus::NotCompared ? '' : 'fit' }}">{{ $note }}</p>
+            @endforeach
+
+            <p>
+                @if ($college->average_high_school_gpa !== null)
+                    <strong>Average high school GPA</strong> of {{ $college->admissions_term }} first-year students: {{ number_format($college->average_high_school_gpa, 2) }}
+                    (reported by {{ AcademicFit::percent($college->gpa_submitted_percent) }} of them).
+                    <span class="fine">Colleges calculate GPA differently, often adding extra points for honors and AP classes, so this may not compare directly with your GPA. {{ $college->gpa_note }}</span>
+                @elseif ($fromCommonDataSet)
+                    This college doesn't publish an average high school GPA.
+                @else
+                    Average high school GPA isn't included in federal data.
+                @endif
+            </p>
+
+            <p>
+                <strong>Overall admission rate:</strong> {{ AcademicFit::percent($college->admission_rate) }} of all first-year applicants ({{ $college->admissions_term }}).
+                <span class="fine">This describes all applicants, not your individual chances. The process for recruited athletes can differ.</span>
+            </p>
+
+            @if ($admissionsSource)
+                <p class="fine">
+                    Source:
+                    <a href="{{ $admissionsSource->url }}" target="_blank" rel="noopener">{{ $fromCommonDataSet ? "the college's ".$admissionsSource->data_period : $admissionsSource->data_period }}</a>
+                </p>
+            @endif
+        </details>
     @endif
 </section>

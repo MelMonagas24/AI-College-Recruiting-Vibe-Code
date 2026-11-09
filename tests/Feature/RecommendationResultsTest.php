@@ -114,8 +114,11 @@ class RecommendationResultsTest extends TestCase
             ->assertSee('Some personalized explanations are unavailable.')
             ->assertSee('Some AI explanations did not pass our fact check, so they are not shown. The verified facts on every card are unaffected.')
             ->assertSee('Tampa offers Business and plays in Division II.')
-            ->assertSee('Personalized explanation unavailable');
+            ->assertSee('Personalized explanation unavailable')
+            ->assertSee("An AI explanation isn't available for this college right now, so none is shown.", false)
+            ->assertSee('<p class="why-text">Tampa offers Business and plays in Division II.</p>', false);
         $this->assertSame(1, substr_count($response->getContent(), '<span class="badge ai">AI-generated</span>'));
+        $this->assertSame(1, substr_count($response->getContent(), 'class="why has-ai"'));
     }
 
     public function test_unverified_costs_are_shown_as_unknown(): void

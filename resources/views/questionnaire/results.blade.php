@@ -11,87 +11,101 @@
     $money = fn (?int $amount): ?string => $amount === null ? null : '$'.number_format($amount);
 @endphp
 
-@section('content')
-    <h1>Your college matches</h1>
-    <p class="intro">
-        @if ($results->all()->isEmpty())
-            We couldn't find a college in our database that fits your answers well enough to recommend.
-        @else
-            Based on your answers, here {{ $results->all()->count() === 1 ? 'is 1 college' : 'are '.$results->all()->count().' colleges' }} from our verified database of women's soccer programs, in two groups.
-        @endif
-    </p>
+@section('container_class', 'medium')
 
-    @if ($results->all()->isNotEmpty())
-        <p class="summary">
-            <a href="#strong-heading">{{ $results->strongMatches->count() }} Strong {{ $results->strongMatches->count() === 1 ? 'Match' : 'Matches' }}</a>
-            <span aria-hidden="true">·</span>
-            <a href="#other-heading">{{ $results->otherOptions->count() }} Other {{ $results->otherOptions->count() === 1 ? 'Option' : 'Options' }} to Consider</a>
-            @if ($results->potentiallyAffordableCount() > 0)
-                <span class="summary-detail">({{ $results->potentiallyAffordableCount() }} potentially affordable after aid)</span>
+@section('content')
+    <div class="results-head">
+        <p class="eyebrow">Your results</p>
+        <h1>Your college matches</h1>
+        <p class="intro">
+            @if ($results->all()->isEmpty())
+                We couldn't find a college in our database that fits your answers well enough to recommend.
+            @else
+                Based on your answers, here {{ $results->all()->count() === 1 ? 'is 1 college' : 'are '.$results->all()->count().' colleges' }} from our verified database of women's soccer programs, in two groups.
             @endif
         </p>
-        @if ($uncheckedCriteria !== [])
-            <p class="fine summary-note">
-                You chose {{ implode(' and ', array_map(fn (string $criterion): string => ['major' => '"'.$options['majors'][$answers['major']].'" for your major', 'size' => '"No preference" for size', 'budget' => '"Unsure" for budget'][$criterion], $uncheckedCriteria)) }},
-                so {{ count($uncheckedCriteria) === 1 ? 'that was' : 'those were' }} not checked. More colleges can be Strong Matches as a result.
-            </p>
-        @endif
-    @endif
 
-    <div class="demo-banner" role="note">
-        <strong>Demo only:</strong> these results are for fictional athlete profiles. Your answers are used only to build this page and are not saved.
+        @if ($results->all()->isNotEmpty())
+            <p class="summary">
+                <a class="strong-link" href="#strong-heading">{{ $results->strongMatches->count() }} Strong {{ $results->strongMatches->count() === 1 ? 'Match' : 'Matches' }}</a>
+                <a href="#other-heading">{{ $results->otherOptions->count() }} Other {{ $results->otherOptions->count() === 1 ? 'Option' : 'Options' }} to Consider</a>
+                @if ($results->potentiallyAffordableCount() > 0)
+                    <span class="summary-detail">({{ $results->potentiallyAffordableCount() }} potentially affordable after aid)</span>
+                @endif
+            </p>
+            @if ($uncheckedCriteria !== [])
+                <p class="fine summary-note">
+                    You chose {{ implode(' and ', array_map(fn (string $criterion): string => ['major' => '"'.$options['majors'][$answers['major']].'" for your major', 'size' => '"No preference" for size', 'budget' => '"Unsure" for budget'][$criterion], $uncheckedCriteria)) }},
+                    so {{ count($uncheckedCriteria) === 1 ? 'that was' : 'those were' }} not checked. More colleges can be Strong Matches as a result.
+                </p>
+            @endif
+        @endif
     </div>
 
-    @if ($explanations->status !== ExplanationStatus::Generated)
-        <div class="notice" role="status">
-            <strong>{{ $explanations->status === ExplanationStatus::Partial ? 'Some personalized explanations are unavailable.' : 'Personalized explanations are unavailable.' }}</strong>
-            {{ $explanations->message }}
+    <div class="top-notices">
+        <div class="demo-banner" role="note">
+            <p><strong>Demo only:</strong> these results are for fictional athlete profiles. Your answers are used only to build this page and are not saved.</p>
         </div>
-    @endif
 
-    @if ($results->all()->isNotEmpty() && $answers['budget'] !== 'unsure' && ($results->aboveBudgetCount() > 0 || $results->unknownCostCount() > 0))
-        <div class="notice warn" role="status">
-            <strong>Affordability check</strong>
-            <ul>
-                @if ($results->aboveBudgetCount() > 0)
-                    <li>{{ $results->aboveBudgetCount() }} of {{ $results->all()->count() }} {{ $results->all()->count() === 1 ? 'college has' : 'colleges have' }} a published cost above your family's estimated budget ({{ $budgetLabel }} per year). {{ $results->aboveBudgetCount() === 1 ? 'It is' : 'They are' }} listed under Other Options to Consider.</li>
-                @endif
-                @if ($results->unknownCostCount() > 0)
-                    <li>{{ $results->unknownCostCount() }} {{ $results->unknownCostCount() === 1 ? 'college has' : 'colleges have' }} a cost we could not verify, so we can't tell whether {{ $results->unknownCostCount() === 1 ? 'it fits' : 'they fit' }} your budget.</li>
-                @endif
-                <li>Published costs are before financial aid. Grants and scholarships could lower what your family actually pays, but we can't predict how much.</li>
-            </ul>
-        </div>
-    @endif
+        @if ($explanations->status !== ExplanationStatus::Generated)
+            <div class="notice" role="status">
+                <strong>{{ $explanations->status === ExplanationStatus::Partial ? 'Some personalized explanations are unavailable.' : 'Personalized explanations are unavailable.' }}</strong>
+                {{ $explanations->message }}
+            </div>
+        @endif
 
-    @if ($results->hasShortfall())
-        <div class="notice" role="status">
-            <strong>Why you're seeing {{ $results->all()->isEmpty() ? 'no matches' : 'fewer than 3 colleges' }}</strong>
-            <ul>
-                @foreach ($results->shortfallReasons as $reason)
-                    <li>{{ $reason }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+        @if ($results->all()->isNotEmpty() && $answers['budget'] !== 'unsure' && ($results->aboveBudgetCount() > 0 || $results->unknownCostCount() > 0))
+            <div class="notice warn" role="status">
+                <strong>Affordability check</strong>
+                <ul>
+                    @if ($results->aboveBudgetCount() > 0)
+                        <li>{{ $results->aboveBudgetCount() }} of {{ $results->all()->count() }} {{ $results->all()->count() === 1 ? 'college has' : 'colleges have' }} a published cost above your family's estimated budget ({{ $budgetLabel }} per year). {{ $results->aboveBudgetCount() === 1 ? 'It is' : 'They are' }} listed under Other Options to Consider.</li>
+                    @endif
+                    @if ($results->unknownCostCount() > 0)
+                        <li>{{ $results->unknownCostCount() }} {{ $results->unknownCostCount() === 1 ? 'college has' : 'colleges have' }} a cost we could not verify, so we can't tell whether {{ $results->unknownCostCount() === 1 ? 'it fits' : 'they fit' }} your budget.</li>
+                    @endif
+                    <li>Published costs are before financial aid. Grants and scholarships could lower what your family actually pays, but we can't predict how much.</li>
+                </ul>
+            </div>
+        @endif
+
+        @if ($results->hasShortfall())
+            <div class="notice" role="status">
+                <strong>Why you're seeing {{ $results->all()->isEmpty() ? 'no matches' : 'fewer than 3 colleges' }}</strong>
+                <ul>
+                    @foreach ($results->shortfallReasons as $reason)
+                        <li>{{ $reason }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+    </div>
 
     @if ($results->all()->isNotEmpty())
-        <section class="category" aria-labelledby="strong-heading">
-            <h2 id="strong-heading">Strong Matches</h2>
+        <section class="category strong" aria-labelledby="strong-heading">
+            <div class="category-head">
+                <span class="category-icon" aria-hidden="true">✓</span>
+                <div>
+                    <h2 id="strong-heading">Strong Matches</h2>
+                    @if ($results->hasStrongMatches())
+                        <p>
+                            @if ($answers['budget'] === 'unsure')
+                                These colleges meet your division, major, and size, based on our verified data.
+                                <strong>Affordability has not been checked or confirmed</strong>, because you chose "Unsure" for your family's budget. Check each college's published cost.
+                            @elseif ($answers['budget'] === '45k_plus')
+                                These colleges meet your division, major, and size, based on our verified data. You chose an open-ended budget ($45,000+), so any verified published cost counts for the budget check.
+                                That doesn't mean every cost is affordable: each card shows the actual published cost so your family can decide.
+                            @else
+                                These colleges meet your division, major, size, and budget, based on our verified data.
+                            @endif
+                        </p>
+                    @else
+                        <p>Colleges that meet your division, major, size, and budget, each confirmed by verified data.</p>
+                    @endif
+                </div>
+            </div>
 
             @if ($results->hasStrongMatches())
-                <p>
-                    @if ($answers['budget'] === 'unsure')
-                        These colleges meet your division, major, and size, based on our verified data.
-                        <strong>Affordability has not been checked or confirmed</strong>, because you chose "Unsure" for your family's budget. Check each college's published cost.
-                    @elseif ($answers['budget'] === '45k_plus')
-                        These colleges meet your division, major, and size, based on our verified data. You chose an open-ended budget ($45,000+), so any verified published cost counts for the budget check.
-                        That doesn't mean every cost is affordable: each card shows the actual published cost so your family can decide.
-                    @else
-                        These colleges meet your division, major, size, and budget, based on our verified data.
-                    @endif
-                </p>
-
                 @foreach ($results->featuredStrongMatches() as $match)
                     @include('questionnaire.partials.college-card', ['expandable' => false])
                 @endforeach
@@ -122,13 +136,21 @@
     @endif
 
     @if ($results->otherOptions->isNotEmpty())
-        <section class="category" aria-labelledby="other-heading">
-            <h2 id="other-heading">Other Options to Consider</h2>
-            <p>
-                These colleges are in your division and could still be worth exploring, but each one has at least one tradeoff, listed on its card.
-                Colleges with the fewest tradeoffs are listed first. A published cost above your budget doesn't rule a college out: financial aid could lower what you would actually pay.
-                Colleges marked "Potentially affordable after aid" have a federal average net price within your budget, which is a reason to look closer, not a promise of your price.
-            </p>
+        <section class="category other" aria-labelledby="other-heading">
+            <div class="category-head">
+                <span class="category-icon" aria-hidden="true">+</span>
+                <div>
+                    <h2 id="other-heading">Other Options to Consider</h2>
+                    <p>
+                        These colleges are in your division and could still be worth exploring, but each one has at least one tradeoff, listed on its card.
+                        Colleges with the fewest tradeoffs are listed first.
+                    </p>
+                    <p>
+                        A published cost above your budget doesn't rule a college out: financial aid could lower what you would actually pay.
+                        Colleges marked "Potentially affordable after aid" have a federal average net price within your budget, which is a reason to look closer, not a promise of your price.
+                    </p>
+                </div>
+            </div>
 
             @foreach ($results->featuredOtherOptions() as $match)
                 @include('questionnaire.partials.college-card', ['expandable' => false])
@@ -147,8 +169,8 @@
         </section>
     @endif
 
-    <div class="card">
-        <h3>How these matches were chosen</h3>
+    <section class="card method" aria-labelledby="method-heading">
+        <h2 id="method-heading">How these matches were chosen</h2>
         <ul>
             <li>Only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.</li>
             <li>Colleges are filtered by your division choice and your planned major. Colleges known not to offer your major are removed.</li>
@@ -162,7 +184,7 @@
             <li>Your position and club league were not used to rank colleges, because our database has no roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
             <li>These results do not guarantee admission, scholarships, roster spots, or recruitment. Talk with college coaches and admissions offices.</li>
         </ul>
-    </div>
+    </section>
 
     <details class="card answers">
         <summary>Your answers</summary>

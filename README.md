@@ -120,6 +120,18 @@ Without an API key, the app works normally and labels explanations as unavailabl
 
 The automated tests always run with the key blank, so they never call the AI or cost money.
 
+## Design
+
+- **Brand:** deep purple and lavender with soft pink accents on off-white backgrounds. All colors are defined once as CSS variables at the top of `public/css/app.css`.
+- **No build step:** the stylesheet is a plain static file, so deployment needs no `npm run build`. It loads with a version number based on the file's last change, so browsers pick up new styles right away.
+- **No motion:** there are no animations, transitions, or smooth scrolling. `SiteDesignTest` fails if any are added.
+- **Pages:**
+  - The homepage has a hero section, a three-step "How it works" section, and a section on where the data comes from.
+  - The questionnaire groups its 13 questions into four sections (Your soccer, Academics, Cost & location, Campus fit), with a progress bar and links to jump between sections.
+  - Each college card starts with key facts (division, whether it offers your major, size, your published cost, and the federal average net price). The full cost, academic, and source details follow.
+- **Images:** the site uses no photos. Icons are simple inline SVG drawings made for this project.
+- **Accessibility:** a "Skip to main content" link, visible pink focus outlines, real radio buttons and labels behind the styled choices, and readable color contrast. Layouts adjust for phones, tablets, and desktops.
+
 ## Testing Locally
 
 ```sh
