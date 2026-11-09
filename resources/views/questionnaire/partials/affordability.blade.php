@@ -1,3 +1,4 @@
+@use('App\Recommendations\Affordability')
 @use('App\Recommendations\AffordabilityStatus')
 @use('App\Recommendations\CostLabel')
 @use('App\Recommendations\NetPriceComparison')
@@ -10,6 +11,8 @@
     $netPriceYear = $college->average_net_price_year;
     $netPriceApplies = $affordability->netPrice === NetPriceComparison::Applies;
     $netPriceSource = $college->sources->firstWhere('topic', 'net_price');
+    $hasLargePriceGap = $netPriceApplies && $affordability->cost !== null
+        && $affordability->cost >= Affordability::LARGE_PRICE_GAP_RATIO * $college->average_net_price;
     $style = match ($affordability->label) {
         CostLabel::WithinBudget => 'fits',
         CostLabel::PotentiallyAffordable => 'maybe',
@@ -90,6 +93,13 @@
                         It was not compared with your budget.
                     @endif
                 </p>
+                @if ($hasLargePriceGap)
+                    <p class="price-gap" role="note">
+                        <strong>Full published cost: {{ $cost }} per year.</strong>
+                        That is far more than this average. Families who don't receive aid pay the full published cost, and aid varies a lot from family to family.
+                        This average is <strong>not a personalized estimate</strong> of what you would pay. Use the college's Net Price Calculator before counting on aid.
+                    </p>
+                @endif
                 <p class="fine">
                     This is the average for {{ $netPriceYear }} full-time first-year students who received federal financial aid{{ $college->is_public ? ' and paid in-state tuition' : '' }}.
                     It is not a personalized estimate or a scholarship guarantee. Students who did not receive federal aid are not included, and many families pay more than the average.

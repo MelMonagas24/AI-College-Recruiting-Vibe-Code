@@ -207,6 +207,30 @@ class NetPriceTest extends TestCase
             ->assertDontSee('$26,752', false);
     }
 
+    public function test_very_expensive_colleges_repeat_the_full_cost_next_to_the_average(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $response = $this->post(route('questionnaire.store'), $this->fictionalAthlete([
+            'division' => 'division_3',
+            'major' => 'education',
+            'budget' => '30k_45k',
+            'home_state' => 'NJ',
+            'size' => 'medium',
+        ]));
+
+        $html = $response->assertOk()->getContent();
+        $washu = substr($html, strpos($html, 'Washington University in St Louis'));
+        $washu = substr($washu, 0, strpos($washu, '</article>'));
+        $tcnj = substr($html, strpos($html, '<h2>The College of New Jersey</h2>'));
+        $tcnj = substr($tcnj, 0, strpos($tcnj, '</article>'));
+
+        $this->assertStringContainsString('<strong>Full published cost: $102,260 per year.</strong>', $washu);
+        $this->assertStringContainsString('<strong>not a personalized estimate</strong>', $washu);
+        $this->assertStringContainsString("Families who don't receive aid pay the full published cost", $washu);
+        $this->assertStringNotContainsString('class="price-gap"', $tcnj, 'TCNJ costs $44,640 in-state against a $26,752 average, which is less than twice the average.');
+    }
+
     public function test_the_seeded_averages_match_the_federal_data_we_retrieved(): void
     {
         $this->seed(CollegeSeeder::class);
@@ -220,7 +244,7 @@ class NetPriceTest extends TestCase
         $this->assertFalse($washu->is_public);
         $this->assertSame(13360, $washu->average_net_price);
         $this->assertSame(47130, $washu->average_net_price_high_income);
-        $this->assertSame(25, College::whereNotNull('average_net_price')->count());
-        $this->assertSame(25, College::whereHas('sources', fn ($query) => $query->where('topic', 'net_price'))->count());
+        $this->assertSame(41, College::whereNotNull('average_net_price')->count());
+        $this->assertSame(41, College::whereHas('sources', fn ($query) => $query->where('topic', 'net_price'))->count());
     }
 }

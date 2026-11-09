@@ -69,7 +69,11 @@ class RecommendationResultsTest extends TestCase
             ->assertDontSee('AI-generated');
 
         $this->assertGreaterThanOrEqual(3, substr_count($response->getContent(), '<article class="card match">'));
-        $this->assertLessThanOrEqual(5, substr_count($response->getContent(), '<article class="card match">'));
+        $this->assertLessThanOrEqual(
+            CollegeMatcher::MAXIMUM_RESULTS + MatchResults::OTHER_OPTIONS_SHOWN_WITH_STRONG_MATCHES,
+            substr_count($response->getContent(), '<article class="card match">'),
+            'At most five Strong Match cards and three Other Option cards are shown in full.',
+        );
     }
 
     public function test_ai_explanations_are_labeled_when_available(): void
@@ -166,7 +170,8 @@ class RecommendationResultsTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertSeeInOrder(['1 Strong Match', '6 Other Options to Consider', '(5 potentially affordable after aid)', 'Strong Matches', 'The College of New Jersey', 'Other Options to Consider', 'Montclair State University', 'Washington University in St Louis', 'University of Scranton'])
+            ->assertSeeInOrder(['2 Strong Matches', '8 Other Options to Consider', '(6 potentially affordable after aid)', 'Strong Matches', 'The College of New Jersey', 'University of Wisconsin-La Crosse', 'Other Options to Consider', 'Montclair State University', 'SUNY College at Geneseo', 'Washington University in St Louis', 'More options to consider (5)', 'University of Scranton'])
+            ->assertSee('$29,247 per year (out-of-state rate)')
             ->assertSee('These colleges meet your division, major, size, and budget, based on our verified data.')
             ->assertSee('<span class="pill strong">Strong Match</span>', false)
             ->assertSee('$44,640 per year (in-state rate)')
@@ -182,20 +187,21 @@ class RecommendationResultsTest extends TestCase
         $this->seed(CollegeSeeder::class);
 
         $this->post(route('questionnaire.store'), $this->fictionalAthlete([
-            'division' => 'division_3',
+            'division' => 'division_1',
             'test_taken' => 'none',
             'act_score' => null,
             'major' => 'education',
-            'budget' => '30k_45k',
-            'home_state' => 'PA',
-            'size' => 'medium',
+            'budget' => '15k_30k',
+            'home_state' => 'OH',
+            'size' => 'small',
+            'setting' => 'rural',
         ]))
             ->assertOk()
             ->assertSee('0 Strong Matches')
             ->assertSee('No Strong Matches')
             ->assertSee('No college in our database meets all of your key criteria (division, major, size, and budget).', false)
             ->assertSee("please don't read any of them as a perfect fit", false)
-            ->assertSeeInOrder(['Other Options to Consider', 'The College of New Jersey', 'is $6,174 above the top of your family']);
+            ->assertSeeInOrder(['Other Options to Consider', 'Ohio State University-Main Campus', 'is $4,142 above the top of your family']);
     }
 
     public function test_closest_alternatives_below_the_minimum_score_are_labeled(): void
@@ -203,10 +209,12 @@ class RecommendationResultsTest extends TestCase
         $this->seed(CollegeSeeder::class);
 
         $this->post(route('questionnaire.store'), $this->fictionalAthlete([
-            'major' => 'nursing',
+            'division' => 'division_1',
+            'major' => 'education',
             'budget' => '15k_30k',
             'home_state' => 'OH',
             'size' => 'small',
+            'setting' => 'rural',
         ]))
             ->assertOk()
             ->assertSee('No Strong Matches')
@@ -423,7 +431,7 @@ class RecommendationResultsTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertSee('More strong matches (3)')
+            ->assertSee('More strong matches (8)')
             ->assertSee('They are listed here only because we show five full cards at a time.')
             ->assertSee('a score below a college', false)
             ->assertSee('is not a reason to skip it', false)
@@ -434,7 +442,7 @@ class RecommendationResultsTest extends TestCase
             ->assertSee('University of North Carolina at Chapel Hill')
             ->assertSee('Your SAT score (1300) is below the middle 50% of Fall 2025 first-year students who submitted SAT scores (1405–1530).');
 
-        $this->assertSame(8, substr_count($response->getContent(), 'class="academic"'), 'All 8 Division I colleges show their academic context.');
+        $this->assertSame(13, substr_count($response->getContent(), 'class="academic"'), 'All 13 Division I colleges show their academic context.');
     }
 
     public function test_expandable_lists_are_hidden_when_every_college_fits_on_a_full_card(): void
@@ -469,7 +477,7 @@ class RecommendationResultsTest extends TestCase
             'priority' => 'balance',
         ]))
             ->assertOk()
-            ->assertSeeInOrder(['University of North Carolina at Chapel Hill', 'Other Options to Consider', 'More options to consider (3)', 'University of Colorado Boulder'])
+            ->assertSeeInOrder(['University of North Carolina at Chapel Hill', 'Other Options to Consider', 'More options to consider (8)', 'University of Colorado Boulder'])
             ->assertSee("Its 2026-27 cost of attendance isn't verified, so we can't confirm it fits your family's budget.");
     }
 

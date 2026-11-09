@@ -276,7 +276,8 @@ class CollegeMatcherTest extends TestCase
             'priority' => 'affordability',
         ]));
 
-        $this->assertSame(['TCNJ'], $results->strongMatches->pluck('college.short_name')->all());
+        $this->assertSame(['TCNJ', 'UW-La Crosse'], $results->strongMatches->pluck('college.short_name')->all());
+        $this->assertSame([29247, 'out-of-state'], [$results->strongMatches[1]->affordability->cost, $results->strongMatches[1]->affordability->rate], 'UW-La Crosse fits even at its out-of-state rate.');
         $tcnj = $results->strongMatches->first();
         $this->assertSame(44640, $tcnj->affordability->cost);
         $this->assertSame('in-state', $tcnj->affordability->rate);
@@ -303,7 +304,7 @@ class CollegeMatcherTest extends TestCase
             'priority' => 'affordability',
         ]));
 
-        $this->assertFalse($results->hasStrongMatches());
+        $this->assertSame(['UW-La Crosse'], $results->strongMatches->pluck('college.short_name')->all(), 'TCNJ is no longer a Strong Match at the out-of-state rate.');
         $tcnj = $results->otherOptions->first(fn (CollegeMatch $match): bool => $match->college->short_name === 'TCNJ');
         $this->assertSame('out-of-state', $tcnj->affordability->rate);
         $this->assertSame(CostLabel::CannotCompare, $tcnj->affordability->label, 'The in-state federal average is never used for an out-of-state athlete.');
@@ -379,6 +380,29 @@ class CollegeMatcherTest extends TestCase
         $this->seed(CollegeSeeder::class);
 
         $results = $this->matcher()->match($this->fictionalAthlete([
+            'division' => 'division_1',
+            'major' => 'education',
+            'budget' => '15k_30k',
+            'size' => 'small',
+            'setting' => 'rural',
+            'priority' => 'affordability',
+        ]));
+
+        $this->assertFalse($results->hasStrongMatches());
+        $this->assertCount(CollegeMatcher::MINIMUM_RESULTS, $results->otherOptions);
+        $this->assertFalse($results->hasShortfall());
+        $this->assertSame(['Ohio State', 'USF', 'Monmouth'], $results->otherOptions->pluck('college.short_name')->all());
+        $this->assertTrue($results->otherOptions->first()->affordability->isPotentiallyAffordable(), 'Ohio State is in-state for this Ohio athlete, and its federal average is within budget.');
+        $this->assertTrue($results->otherOptions->first()->meetsMinimumScore());
+        $this->assertFalse($results->otherOptions->last()->meetsMinimumScore(), 'Fallback alternatives are marked so the page can label them.');
+        $results->otherOptions->each(fn (CollegeMatch $match) => $this->assertNotEmpty($match->tradeoffs));
+    }
+
+    public function test_the_expanded_database_gives_a_small_college_nursing_athlete_real_division_ii_options(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $results = $this->matcher()->match($this->fictionalAthlete([
             'division' => 'division_2',
             'major' => 'nursing',
             'budget' => '15k_30k',
@@ -386,14 +410,10 @@ class CollegeMatcherTest extends TestCase
             'priority' => 'affordability',
         ]));
 
-        $this->assertFalse($results->hasStrongMatches());
-        $this->assertCount(CollegeMatcher::MINIMUM_RESULTS, $results->otherOptions);
-        $this->assertFalse($results->hasShortfall());
-        $this->assertSame(['Nova Southeastern', 'Tampa'], $results->otherOptions->take(2)->pluck('college.short_name')->all(), 'Both have two tradeoffs; Nova Southeastern is potentially affordable after aid.');
-        $this->assertTrue($results->otherOptions->first()->affordability->isPotentiallyAffordable());
-        $this->assertTrue($results->otherOptions->first()->meetsMinimumScore());
-        $this->assertFalse($results->otherOptions->last()->meetsMinimumScore(), 'Fallback alternatives are marked so the page can label them.');
-        $results->otherOptions->each(fn (CollegeMatch $match) => $this->assertNotEmpty($match->tradeoffs));
+        $this->assertGreaterThanOrEqual(5, $results->otherOptions->count());
+        $this->assertTrue($results->otherOptions->every(fn (CollegeMatch $match): bool => $match->meetsMinimumScore()), 'No fallback alternatives are needed any more.');
+        $this->assertContains('Midwestern State', $results->otherOptions->pluck('college.short_name')->all());
+        $this->assertContains('Central Missouri', $results->otherOptions->pluck('college.short_name')->all());
     }
 
     public function test_full_cards_and_explanations_are_split_between_the_categories(): void

@@ -34,11 +34,13 @@ class CollegeSeeder extends Seeder
             foreach ($data['colleges'] as $record) {
                 $this->validate($record);
 
+                $verifiedOn = $record['verified_on'] ?? $data['accessed_on'];
+
                 $college = College::updateOrCreate(
                     ['ipeds_unit_id' => $record['ipeds_unit_id']],
                     [
-                        ...Arr::except($record, ['ipeds_unit_id', 'sources']),
-                        'last_verified_on' => $data['accessed_on'],
+                        ...Arr::except($record, ['ipeds_unit_id', 'sources', 'verified_on']),
+                        'last_verified_on' => $verifiedOn,
                     ],
                 );
 
@@ -49,7 +51,7 @@ class CollegeSeeder extends Seeder
                         'topic' => $source['topic'],
                         'url' => $source['url'],
                         'data_period' => $source['data_period'],
-                        'accessed_on' => $data['accessed_on'],
+                        'accessed_on' => $verifiedOn,
                         'note' => $source['note'] ?? null,
                     ]);
                 }
@@ -116,6 +118,7 @@ class CollegeSeeder extends Seeder
             'average_high_school_gpa' => ['nullable', 'numeric', 'between:0,5'],
             'gpa_submitted_percent' => ['nullable', 'numeric', 'between:0,100', 'required_with:average_high_school_gpa'],
             'verification_status' => ['required', Rule::enum(VerificationStatus::class)],
+            'verified_on' => ['sometimes', 'date_format:Y-m-d'],
             'sources' => ['required', 'array', 'min:1'],
             'sources.*.topic' => ['required', Rule::in(CollegeSource::TOPICS)],
             'sources.*.url' => ['required', 'url:https'],

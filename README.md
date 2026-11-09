@@ -8,7 +8,22 @@ Female high school athletes navigating college recruiting often have to piece to
 
 ## College Database
 
-The app's college data lives in `database/data/colleges.json`: 25 women's college soccer programs researched from official sources on October 26, 2026. Each college records its verification status (verified, partially verified, or unverified), and each important fact keeps its official source link and academic year. Unknown values are left blank and never estimated. Costs are published prices before financial aid, not what a family will pay.
+The app's college data lives in `database/data/colleges.json`: 41 women's college soccer programs (13 in NCAA Division I, 13 in Division II, 15 in Division III). The first 25 were researched from official sources on October 26, 2026, and 16 more were added on November 7, 2026. Each college records its verification status (verified, partially verified, or unverified) and the date it was checked, and each important fact keeps its official source link and academic year. Unknown values are left blank and never estimated. Costs are published prices before financial aid, not what a family will pay.
+
+**Added November 7, 2026** to fill gaps in affordable public colleges, Texas, the Midwest, the West Coast, and the South:
+
+| Division | Colleges |
+|---|---|
+| I | Ohio State (OH), Texas A&M (TX), UC Irvine (CA), James Madison (VA), Utah (UT) |
+| II | Grand Valley State (MI), Minnesota State Mankato (MN), Central Missouri (MO), Midwestern State (TX), UT Dallas (TX), Western Oregon (OR) |
+| III | UW-La Crosse (WI), SUNY Geneseo (NY), Christopher Newport (VA), Trinity University (TX), UC Santa Cruz (CA) |
+
+How each new college was verified:
+
+- **Women's soccer and NCAA division:** the official athletics site's 2026 schedule or schedule announcement, and its conference. UT Dallas now competes in Division II (Lone Star Conference).
+- **Published cost:** the college's own 2026-27 cost of attendance page, at the in-state and out-of-state rates. When a page leaves out books, travel, or personal costs, the college is marked as not including every expense. Texas A&M's 2026-27 cost is only available through an online calculator, so it is recorded as unverified rather than estimated.
+- **Enrollment, majors, admissions, and average net price:** the U.S. Department of Education's College Scorecard (Fall 2024 enrollment and admissions; bachelor's programs in federal field-of-study data; 2024-25 average net price).
+- **Merit scholarships:** not verified yet for the new colleges, so they show as "Unknown".
 
 To add or update a college, edit the JSON file, then run:
 
@@ -69,7 +84,7 @@ Every card's cost details get one label:
 3. **Ranking:** budget, campus environment, size, and what matters most. Affordability counts the most. Published costs are prices before aid, so they are compared to the family's after-aid budget only to show how much grants or scholarships would need to cover.
 4. **In-state vs. out-of-state:** the athlete's home state (question 10) decides which published price applies. A public college shows its in-state price only when she lives in the same state; otherwise, including athletes outside the U.S., it shows the out-of-state price. Private colleges charge everyone the same published price. Each college sets its own residency rules.
 5. **Affordability warnings:** each result says whether the published cost is within or above the family's budget range (or, for "$45,000+", shows the cost for the family to judge), by how much, and that financial aid could change the actual cost. Unverified costs are labeled "Cost not verified" and are never called affordable. Scholarships are never estimated. See "Published cost and federal average net price" above for how the federal average is used.
-6. **Academic fit:** an SAT or ACT score is compared with a college's middle 50% only when that range comes from the college's 2025-26 Common Data Set and at least 25% of first-year students submitted that test. Within or above the range earns full credit, and below it earns 75%. Academic fit can change the order of colleges but never decides whether a college can appear, and athletes without scores are never penalized. SAT and ACT are never converted. GPA is shown only as context, because colleges report it on different scales. The 12 colleges without a findable Common Data Set show federal College Scorecard data (Fall 2024), which is never used for scoring. Admission rates are shown as facts, never as an athlete's chances.
+6. **Academic fit:** an SAT or ACT score is compared with a college's middle 50% only when that range comes from the college's 2025-26 Common Data Set and at least 25% of first-year students submitted that test. Within or above the range earns full credit, and below it earns 75%. Academic fit can change the order of colleges but never decides whether a college can appear, and athletes without scores are never penalized. SAT and ACT are never converted. GPA is shown only as context, because colleges report it on different scales. The 28 colleges without a Common Data Set in our research (12 of the original 25 and all 16 added in November) show federal College Scorecard data (Fall 2024), which is never used for scoring. Admission rates are shown as facts, never as an athlete's chances.
 7. **Not used:** position and club league, because the database has no roster data, and a club league cannot decide a player's NCAA division.
 8. **Fewer than 3 colleges:** when the division and major leave fewer than 3 colleges, or when there is a Strong Match but few other colleges meet her preferences, the page explains why instead of adding poor matches.
 

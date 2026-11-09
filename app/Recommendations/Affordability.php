@@ -15,6 +15,12 @@ use App\Models\College;
 final readonly class Affordability
 {
     /**
+     * When the published cost is at least this many times the federal average net price,
+     * the card repeats the full cost and warns that the average is not a personal estimate.
+     */
+    public const LARGE_PRICE_GAP_RATIO = 2;
+
+    /**
      * @param  int|null  $cost  Published annual cost of attendance that applies to the athlete.
      * @param  string|null  $rate  "in-state" or "out-of-state" for public colleges; null when one price applies to everyone.
      * @param  int|null  $budgetMinimum  Bottom of the family's budget range.

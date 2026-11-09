@@ -15,23 +15,46 @@ class CollegeDatabaseTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_seeder_loads_all_25_colleges_by_division(): void
+    public function test_seeder_loads_all_41_colleges_by_division(): void
     {
         $this->seed(CollegeSeeder::class);
 
-        $this->assertSame(25, College::count());
-        $this->assertSame(8, College::where('ncaa_division', 1)->count());
-        $this->assertSame(7, College::where('ncaa_division', 2)->count());
-        $this->assertSame(10, College::where('ncaa_division', 3)->count());
+        $this->assertSame(41, College::count());
+        $this->assertSame(13, College::where('ncaa_division', 1)->count());
+        $this->assertSame(13, College::where('ncaa_division', 2)->count());
+        $this->assertSame(15, College::where('ncaa_division', 3)->count());
     }
 
     public function test_every_seeded_college_is_eligible_and_tracks_verification(): void
     {
         $this->seed(CollegeSeeder::class);
 
-        $this->assertSame(25, College::eligibleForRecommendations()->count());
-        $this->assertSame(19, College::where('verification_status', VerificationStatus::Verified)->count());
-        $this->assertSame(6, College::where('verification_status', VerificationStatus::PartiallyVerified)->count());
+        $this->assertSame(41, College::eligibleForRecommendations()->count());
+        $this->assertSame(34, College::where('verification_status', VerificationStatus::Verified)->count());
+        $this->assertSame(7, College::where('verification_status', VerificationStatus::PartiallyVerified)->count());
+    }
+
+    public function test_colleges_added_in_november_match_their_official_sources(): void
+    {
+        $this->seed(CollegeSeeder::class);
+
+        $ohioState = College::where('short_name', 'Ohio State')->sole();
+        $this->assertSame([1, 'Big Ten', 34142, 64990, true], [$ohioState->ncaa_division, $ohioState->conference, $ohioState->cost_of_attendance_in_state, $ohioState->cost_of_attendance_out_of_state, $ohioState->cost_of_attendance_is_complete]);
+        $this->assertSame('2026-11-07', $ohioState->last_verified_on->toDateString());
+
+        $utDallas = College::where('short_name', 'UT Dallas')->sole();
+        $this->assertSame(2, $utDallas->ncaa_division, 'UT Dallas now competes in NCAA Division II (Lone Star Conference).');
+        $this->assertFalse($utDallas->offers_nursing);
+
+        $geneseo = College::where('short_name', 'SUNY Geneseo')->sole();
+        $this->assertSame([26291, 37551], [$geneseo->cost_of_attendance_in_state, $geneseo->cost_of_attendance_out_of_state]);
+        $this->assertFalse($geneseo->cost_of_attendance_is_complete, 'Geneseo publishes direct costs only.');
+
+        $texasAm = College::where('short_name', 'Texas A&M')->sole();
+        $this->assertNull($texasAm->cost_of_attendance_in_state, 'Its 2026-27 cost could not be verified, so it is not estimated.');
+        $this->assertSame(21527, $texasAm->average_net_price);
+
+        $this->assertSame('2026-10-26', College::where('short_name', 'TCNJ')->sole()->last_verified_on->toDateString());
     }
 
     public function test_every_seeded_college_keeps_its_official_sources(): void
@@ -53,7 +76,7 @@ class CollegeDatabaseTest extends TestCase
     {
         $this->seed(CollegeSeeder::class);
 
-        foreach (['Western Washington', 'Susquehanna', 'Catholic University', 'UChicago', 'Penn State'] as $shortName) {
+        foreach (['Western Washington', 'Susquehanna', 'Catholic University', 'UChicago', 'Penn State', 'Texas A&M'] as $shortName) {
             $college = College::where('short_name', $shortName)->sole();
 
             $this->assertSame(VerificationStatus::PartiallyVerified, $college->verification_status);
@@ -99,7 +122,7 @@ class CollegeDatabaseTest extends TestCase
 
         $this->seed(CollegeSeeder::class);
 
-        $this->assertSame(25, College::count());
+        $this->assertSame(41, College::count());
         $this->assertSame($sourceCount, CollegeSource::count());
     }
 

@@ -212,7 +212,7 @@ class AcademicFitTest extends TestCase
             $this->assertContains($id, $allShown($sat1300), "{$name} meets this athlete's preferences and must stay available.");
         }
 
-        $this->assertCount(3, $sat1300->moreStrongMatches(), 'Colleges past the first five are expandable Strong Matches, not demoted.');
+        $this->assertCount(8, $sat1300->moreStrongMatches(), 'Colleges past the first five are expandable Strong Matches, not demoted.');
         $sat1300->all()->each(fn (CollegeMatch $match) => $this->assertTrue($match->isStrongMatch(), 'A test score must never move a college out of Strong Matches.'));
     }
 
@@ -254,7 +254,7 @@ class AcademicFitTest extends TestCase
         $this->seed(CollegeSeeder::class);
 
         $this->assertSame(13, College::where('admissions_data_source', College::COMMON_DATA_SET)->count());
-        $this->assertSame(12, College::where('admissions_data_source', College::COLLEGE_SCORECARD)->count());
+        $this->assertSame(28, College::where('admissions_data_source', College::COLLEGE_SCORECARD)->count(), '12 original colleges plus the 16 added in November use federal Scorecard data.');
 
         College::with('sources')->get()->each(function (College $college): void {
             $this->assertNotNull($college->sources->firstWhere('topic', 'admissions'), "{$college->name} needs an admissions source.");

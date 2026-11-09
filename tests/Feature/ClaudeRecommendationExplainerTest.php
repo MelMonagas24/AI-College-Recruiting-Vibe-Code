@@ -39,7 +39,7 @@ class ClaudeRecommendationExplainerTest extends TestCase
     ];
 
     /**
-     * The New Jersey athlete: TCNJ is a Strong Match, and Montclair State and Scranton are Other Options.
+     * The New Jersey athlete: TCNJ and UW-La Crosse are Strong Matches, and Montclair State, SUNY Geneseo, and WashU are Other Options.
      *
      * @var array<string, mixed>
      */
@@ -221,19 +221,19 @@ class ClaudeRecommendationExplainerTest extends TestCase
     public function test_it_rejects_cost_and_budget_claims_even_when_they_are_negated(): void
     {
         $results = $this->results($this->newJerseyAnswers);
-        $scranton = $this->idOf($results, 'Scranton');
+        $washu = $this->idOf($results, 'WashU');
 
         foreach ([
-            'Scranton is within your budget.',
-            'Scranton is not within your budget.',
-            "Scranton doesn't fit your family's budget.",
-            'Scranton is affordable.',
-            'Financial aid could help at Scranton.',
-            'Scranton has merit scholarships.',
-            'Scranton tuition is high.',
-            'Scranton is more expensive than you hoped.',
+            'WashU is within your budget.',
+            'WashU is not within your budget.',
+            "WashU doesn't fit your family's budget.",
+            'WashU is affordable.',
+            'Financial aid could help at WashU.',
+            'WashU has merit scholarships.',
+            'WashU tuition is high.',
+            'WashU is more expensive than you hoped.',
         ] as $text) {
-            $this->assertSame([$scranton => 'cost_or_budget'], $this->rejectedRules($results, array_replace($this->validTexts($results), [$scranton => $text])), $text);
+            $this->assertSame([$washu => 'cost_or_budget'], $this->rejectedRules($results, array_replace($this->validTexts($results), [$washu => $text])), $text);
         }
     }
 
@@ -241,7 +241,8 @@ class ClaudeRecommendationExplainerTest extends TestCase
     {
         $results = $this->results($this->newJerseyAnswers);
         $texts = $this->validTexts($results);
-        $texts[$this->idOf($results, 'Scranton')] = 'Scranton offers Education, but it is a small college rather than a medium one. Check the cost details below.';
+        $texts[$this->idOf($results, 'WashU')] = 'WashU offers Education and is the medium size you wanted. Check the cost details below.';
+        $texts[$this->idOf($results, 'SUNY Geneseo')] = 'SUNY Geneseo offers Education, but it is a small college rather than a medium one.';
         $texts[$this->idOf($results, 'TCNJ')] = 'TCNJ offers Education and has 7,435 undergraduates, so it is the medium size you wanted.';
 
         $this->assertSame([], $this->rejectedRules($results, $texts));
@@ -323,9 +324,11 @@ class ClaudeRecommendationExplainerTest extends TestCase
         $this->assertStringStartsWith('not shared', json_decode($request, true)['athlete_preferences']['matters_most'], 'An "Affordability" priority is not sent, so the AI is not invited to discuss cost.');
         $this->assertSame('Strong Match', $colleges['The College of New Jersey']['category']);
         $this->assertFalse($colleges['The College of New Jersey']['cost_is_a_tradeoff']);
-        $this->assertSame('Other Option to Consider', $colleges['University of Scranton']['category']);
-        $this->assertTrue($colleges['University of Scranton']['cost_is_a_tradeoff']);
-        $this->assertSame(['It\'s a Small college (3,613 undergraduates, Fall 2024), not medium.'], $colleges['University of Scranton']['tradeoffs']);
+        $this->assertSame('Other Option to Consider', $colleges['Washington University in St Louis']['category']);
+        $this->assertTrue($colleges['Washington University in St Louis']['cost_is_a_tradeoff']);
+        $this->assertSame([], $colleges['Washington University in St Louis']['tradeoffs'], 'Its only tradeoff is cost, which is never sent.');
+        $this->assertFalse($colleges['SUNY College at Geneseo']['cost_is_a_tradeoff']);
+        $this->assertSame(['It\'s a Small college (3,869 undergraduates, Fall 2024), not medium.'], $colleges['SUNY College at Geneseo']['tradeoffs']);
     }
 
     public function test_the_request_shares_only_the_test_score_comparison_never_the_score(): void

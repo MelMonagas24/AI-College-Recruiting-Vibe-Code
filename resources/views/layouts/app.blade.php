@@ -164,6 +164,7 @@
         .cost-details summary { cursor: pointer; font-weight: 600; color: #3b2a8f; }
         .cost-details ul { margin: 6px 0 0 20px; display: grid; gap: 4px; font-size: 0.92rem; }
         .summary-detail { font-weight: 400; color: #4b5563; }
+        .price-gap { padding: 10px 12px; border-radius: 10px; background: #fff; border: 2px solid #7c3aed; color: #1f2937; }
         .academic { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid #ddd6fe; background: #f5f3ff; display: grid; gap: 6px; }
         .academic h3 { margin: 0; color: #3b2a8f; }
         .academic p { margin: 0; }
