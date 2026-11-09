@@ -757,6 +757,13 @@ details.also > summary:focus-visible { outline: var(--focus); outline-offset: -3
 .also-name { font-size: 1.15rem; font-weight: 800; color: var(--purple-900); }
 
 .method h2, .answers h2 { font-size: 1.2rem; color: var(--purple-900); }
+.method > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; list-style: none; }
+.method > summary::-webkit-details-marker { display: none; }
+.method > summary::after { content: "Show details ▾"; margin-left: auto; font-size: 0.92rem; font-weight: 700; color: var(--purple-700); }
+.method[open] > summary::after { content: "Hide details ▴"; }
+.method[open] > summary { margin-bottom: 8px; }
+.method > summary:focus-visible { outline: var(--focus); outline-offset: 4px; border-radius: 6px; }
+.method-hint { order: 2; flex-basis: 100%; font-size: 0.92rem; font-weight: 400; color: var(--muted); }
 .answers dl { margin-top: 10px; }
 .answers dl { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
 

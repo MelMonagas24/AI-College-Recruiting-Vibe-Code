@@ -169,8 +169,11 @@
         </section>
     @endif
 
-    <section class="card method" aria-labelledby="method-heading">
-        <h2 id="method-heading">How these matches were chosen</h2>
+    <details class="card method">
+        <summary>
+            <h2>How these matches were chosen</h2>
+            <span class="method-hint">Matching rules, cost and net price definitions, academic fit, and disclaimers</span>
+        </summary>
         <ul>
             <li>Only colleges with a verified active women's soccer program and a confirmed NCAA division can be recommended.</li>
             <li>Colleges are filtered by your division choice and your planned major. Colleges known not to offer your major are removed.</li>
@@ -184,7 +187,7 @@
             <li>Your position and club league were not used to rank colleges, because our database has no roster data. Your club level ({{ $league->label() }}, approximate grouping: {{ $league->tier()->label() }}) does not decide which NCAA division you can play in.</li>
             <li>These results do not guarantee admission, scholarships, roster spots, or recruitment. Talk with college coaches and admissions offices.</li>
         </ul>
-    </section>
+    </details>
 
     <details class="card answers">
         <summary>Your answers</summary>

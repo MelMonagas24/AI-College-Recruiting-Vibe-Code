@@ -113,6 +113,10 @@ class SiteDesignTest extends TestCase
         $content = $response->assertOk()->getContent();
 
         $this->assertSame(substr_count($content, 'class="academic"'), substr_count($content, '<details class="academic-details">'), 'Every college with admissions data has an expandable academic section.');
+        $response->assertSee('<details class="card method">', false)
+            ->assertSeeInOrder(['<details class="card method">', 'How these matches were chosen', '</summary>', 'Only colleges with a verified active women', 'Federal average net price', 'not a personalized estimate', 'These results do not guarantee admission, scholarships, roster spots, or recruitment.', '</details>'], false);
+        $this->assertStringNotContainsString('<details class="card method" open', $content, 'How these matches were chosen starts collapsed.');
+
         $response->assertSeeInOrder(['<details class="academic-details">', 'Academic context', 'SAT/ACT policy, test score ranges, GPA, and admission rate', '</summary>', 'Overall admission rate:', 'This describes all applicants, not your individual chances.', 'Source:', '</details>'], false);
     }
 }
